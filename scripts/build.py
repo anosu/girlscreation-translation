@@ -1,34 +1,65 @@
 import hashlib
 import json
+from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
 
-trans_dir = Path(".")
-language = "zh_Hans"
+trans_dir = Path("translations")
+languages = ["zh-Hans"]
+
+SEPARATOR = b"\x00"
+PATH_SEPARATOR = "\x01"
 
 
-def get_hash(obj: dict[str, str]) -> str:
+def traverse(obj: dict[str, Any]) -> Iterable[tuple[str, str]]:
+    for key, value in sorted(obj.items()):
+        if isinstance(value, dict):
+            for sub_path, sub_value in traverse(value):
+                yield f"{key}{PATH_SEPARATOR}{sub_path}", sub_value
+        else:
+            yield key, value
+
+
+def obj_hash(obj: dict[str, Any]) -> str:
     md5 = hashlib.md5()
-    for key in sorted(obj.keys()):
-        md5.update(f"{key}\x00{obj[key]}\x00".encode())
+
+    for key, value in traverse(obj):
+        md5.update(key.encode("utf-8"))
+        md5.update(SEPARATOR)
+        md5.update(value.encode("utf-8"))
+        md5.update(SEPARATOR)
+
     return md5.hexdigest()
 
 
-def hash_file(path: Path) -> str:
-    return get_hash(json.loads(path.read_text(encoding="utf-8")))
+def file_hash(path: Path) -> str:
+    return obj_hash(json.loads(path.read_text(encoding="utf-8")))
 
 
-manifest = {
-    "names": hash_file(trans_dir / f"names/{language}.json"),
-    "words": hash_file(trans_dir / f"words/{language}.json"),
-    "novels": {
-        int(f.parent.name): hash_file(f)
-        for f in trans_dir.glob(f"novels/*/{language}.json")
-    },
-}
+def process(folder: Path):
+    manifest = {}
+    manifest_path = folder / "manifest.json"
 
-manifest["hash"] = get_hash(manifest)
+    for file in folder.rglob("*.json"):
+        if manifest_path.samefile(file):
+            continue
+        parts = file.relative_to(folder).with_suffix("").parts
+        table = manifest
+        for part in parts[:-1]:
+            table = manifest.setdefault(part, {})
+        table[parts[-1]] = file_hash(file)
 
-manifest_path = trans_dir / f"manifest/{language}.json"
-manifest_path.write_text(
-    json.dumps(manifest, sort_keys=True, ensure_ascii=False, indent=4), encoding="utf-8"
-)
+    manifest["hash"] = obj_hash(manifest)
+    manifest_path.write_text(
+        json.dumps(manifest, sort_keys=True, indent=4, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+
+def main():
+    for lang in languages:
+        process(trans_dir / lang)
+
+
+if __name__ == "__main__":
+    main()

@@ -2,13 +2,22 @@
   "repository": "https://github.com/anosu/girlscreaionr-translation.git",
   "license": "MIT",
   "private": false,
+  "type": "module",
+  "engines": {
+    "node": "^22.18.0 || >=24.0.0"
+  },
   "scripts": {
-    "start": "node app.js"
+    "start": "node app.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "typescript": "^7.0.2"
   },
   "dependencies": {
-    "@vercel/node": "^4.0.0",
-    "compression": "^1.7.4",
-    "cors": "^2.8.5",
-    "express": "^4.19.2"
+    "@fastify/compress": "^9.2.0",
+    "@fastify/cors": "^11.3.0",
+    "@fastify/static": "^10.1.3",
+    "fastify": "^5.12.4"
   }
 }

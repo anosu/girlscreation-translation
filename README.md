@@ -1,23 +1,20 @@
 # GirlsCreaionR Translation
 
-少女艺术绮谭的简中翻译，使用GalTransl + Deepseek-V3翻译，Github Actions自动化更新
-
-### 目录
-
-- dict: 兼容旧版插件的字典
-- names: 人物名字典
-- novels: 剧情翻译
-- words: 主页角色语音翻译
-- scripts: 自动更新脚本
-
-### 接口
-
-- https://girlscreation.ntr.best
-
-请填写在插件配置文件`GCMod.json`中的`translation_api`字段
+少女艺术绮谭的简中翻译，使用GalTransl + Deepseek-V4翻译，Github Actions自动化更新
 
 插件请看[GCMod](https://github.com/anosu/GCMod)
 
-### 注意
+### 本地运行
 
-**原使用Sakura 0.9翻译的R2接口因为时间原因后续将停用**
+使用 Node.js 22.18+（22 LTS）或 24+，直接运行 TypeScript，无需构建：
+
+```sh
+npm ci
+npm start
+```
+
+默认端口为 `12315`，可通过环境变量 `PORT` 修改。翻译文件通过
+`/translations/` 访问，例如 `/translations/zh-CN/manifest.json`。
+服务使用 Fastify 及官方 static、compress、cors 插件，支持压缩、跨域请求和条件缓存，文件更新后会重新验证缓存。
+
+运行 `npm run typecheck` 检查类型，运行 `npm test` 验证 HTTP 接口。
