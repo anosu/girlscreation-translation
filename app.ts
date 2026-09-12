@@ -45,8 +45,11 @@ await app.register(staticFiles, {
     maxAge: 0,
 })
 
-await app.listen({ port, host: '::' })
-const address = app.server.address()
-if (address && typeof address !== 'string') {
-    console.log(`Server is running on http://localhost:${address.port}`)
-}
+app.listen({ port, host: '::' }, (error, address) => {
+    if (error) {
+        console.error(error)
+        process.exitCode = 1
+        return
+    }
+    console.log(`Server is running on http://localhost:${new URL(address).port}`)
+})

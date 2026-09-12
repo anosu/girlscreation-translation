@@ -17,7 +17,7 @@
     "prepare": "husky",
     "build:manifest": "uv run --no-sync python -m scripts.build",
     "check:translations": "uv run --no-sync python -m scripts.run check",
-    "test": "uv run --no-sync python -m unittest discover -s tests -v"
+    "test": "uv run --no-sync python -m unittest discover -s tests -v && node --test tests/server.test.mjs"
   },
   "devDependencies": {
     "@openai/codex": "0.154.0",
