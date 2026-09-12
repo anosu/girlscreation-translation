@@ -8,14 +8,12 @@ from scripts.build import make_manifest, traverse
 from scripts.config import Project, Target
 from scripts.glossary import (
     apply_proposals,
-    observed_policy,
     project_terms,
     read_optional,
     resolve_glossary,
-    review_outputs,
     term_for,
 )
-from scripts.models import Results, read_state
+from scripts.models import Results
 from scripts.prepare import read_plan, translation_at
 from scripts.utils import digest, read_json, write_bytes, write_json
 from scripts.validate import validate_results
@@ -127,46 +125,14 @@ def prepare_update(project: Project, target: Target) -> Update:
     # Validate the fully projected result, allowing any safely applied subset after interruption.
     if digest([names, terms]) != result.published_terms_after:
         raise ValueError("Published terminology changed since setup")
-    state_before = read_state(target.state)
-    bindings = {
-        t.entry_id: digest([project.source_language, t.source])
-        for t in plan.tasks
-        if any(b.track_source for b in t.targets)
-    }
-    identity = {
-        "project": project.id,
-        "language": target.code,
-        "source_language": project.source_language,
-    }
-    if state_before and any(state_before.get(k) != v for k, v in identity.items()):
-        raise ValueError("Source state belongs to another project or language")
-    if bindings and digest(state_before) != plan.source_state_before:
-        if any(
-            state_before.get("sources", {}).get(k) != v for k, v in bindings.items()
-        ):
-            raise ValueError("Source state changed since prepare")
-    policy = observed_policy(target.style, target.rules, glossary_after, names, terms)
-    state_after = {
-        **identity,
-        "sources": {**state_before.get("sources", {}), **bindings},
-        "term_bindings": [binding.model_dump() for binding in plan.term_bindings],
-        "observed_policy": policy,
-        "review_outputs": review_outputs(
-            state_before,
-            policy,
-            plan.published_files,
-        ),
-    }
     files = {
         target.translations / name: encoded(data) for name, data in documents.items()
     }
-    for path, value, before in [
-        (target.glossary, glossary_after, glossary_before),
-        (target.state, state_after, state_before),
-    ]:
-        originals[path] = path.read_bytes() if path.exists() else None
-        if value != before:
-            files[path] = encoded(value)
+    originals[target.glossary] = (
+        target.glossary.read_bytes() if target.glossary.exists() else None
+    )
+    if glossary_after != glossary_before:
+        files[target.glossary] = encoded(glossary_after)
     content = {
         path.relative_to(target.translations).as_posix(): raw
         for path, raw in published.items()

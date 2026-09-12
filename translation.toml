@@ -29,4 +29,3 @@ api_key_env = "OPENAI_API_KEY"
 [targets.zh-Hans]
 name = "简体中文"
 style = "scripts/games/girlscreation/resources/zh-Hans.style.md"
-rules = "scripts/games/girlscreation/resources/zh-Hans.rules.json"

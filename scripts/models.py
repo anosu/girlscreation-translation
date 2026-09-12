@@ -1,19 +1,17 @@
 """Data crossing the game, planning and agent interfaces."""
 
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 
 from scripts.config import Rules, StrictModel, Text
-from scripts.utils import read_json
 
 
 class Binding(StrictModel):
     file: str
     path: list[str]
     priority: int = 0
-    track_source: bool = True
 
     @model_validator(mode="after")
     def valid_path(self):
@@ -105,11 +103,11 @@ class Task(StrictModel):
     use_terms: bool
     rules: dict
     reuse: str | None
-    reason: Literal["missing", "source_changed", "linked_outputs"]
+    reason: Literal["missing", "linked_outputs"]
 
 
 class Plan(StrictModel):
-    version: Literal[6]
+    version: Literal[7]
     id: Text
     project: Text
     project_name: Text
@@ -120,7 +118,6 @@ class Plan(StrictModel):
     adapter_options: dict
     rules: dict
     style: str
-    source_state_before: Text
     source_version: Text
     source_files: list[str] | None = None
     check_existing: bool = False
@@ -165,7 +162,7 @@ type TermIndex = dict[str, list[ResolvedTerm]]
 
 
 class Results(Submission):
-    version: Literal[6]
+    version: Literal[7]
     plan: Text
     project: Text
     language: Text
@@ -185,42 +182,3 @@ class Results(Submission):
                 if key != "published_terms_before"
             }
         return value
-
-
-class ObservedPolicy(StrictModel):
-    style: Text
-    rules: Text
-    terms: TermIndex
-
-    @field_validator("terms", mode="before")
-    @classmethod
-    def legacy_terms(cls, values: dict) -> dict:
-        result = {}
-        for source, entries in values.items():
-            if isinstance(entries, dict):
-                entry = dict(entries)
-                if "categories" not in entry and (
-                    entry.get("note", "").startswith("Existing terminology: ")
-                    or entry.get("note") == "Established term reference"
-                ):
-                    entry.pop("note", None)
-                entries = [entry]
-            result[source] = entries
-        return result
-
-
-class SourceState(StrictModel):
-    project: Text
-    language: Text
-    source_language: Text
-    sources: dict[str, Text] = Field(default_factory=dict)
-    term_bindings: list[TermBinding] = Field(default_factory=list)
-    observed_policy: ObservedPolicy | None = None
-    review_outputs: list[Text] = Field(default_factory=list)
-
-
-def read_state(path: Path) -> dict:
-    if not path.exists():
-        return {}
-    data = read_json(path)
-    return {} if data == {} else SourceState.model_validate(data).model_dump()

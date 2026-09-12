@@ -144,7 +144,7 @@ def main() -> None:
         paths = [
             workspace_path(path)
             for language in selected
-            for path in (language.translations, language.glossary, language.state)
+            for path in (language.translations, language.glossary)
             if path.exists()
         ]
         if paths:

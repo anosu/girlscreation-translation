@@ -20,16 +20,15 @@ from scripts.ci import restore_artifacts
 from scripts.evaluation import evaluate
 from scripts.glossary import (
     apply_proposals,
-    observed_policy,
     resolve_glossary,
     term_for,
     terms_payload,
 )
 from scripts.merge import apply_updates, merge_results, prepare_update
 from scripts.models import Results, Task, TermProposal
-from scripts.operations import prune_cache, review, run_summary, status
+from scripts.operations import prune_cache, status
 from scripts.prepare import compile_catalog, prepare_tasks, source_catalog
-from scripts.run import argument_parser, main
+from scripts.run import argument_parser, check_translations, main
 from scripts.session import Session, setup_session
 from scripts.utils import read_json, write_bytes, write_json
 
@@ -79,7 +78,7 @@ class OperationsTests(unittest.TestCase):
         session.finalize()
         update = prepare_update(self.project, target)
         expected = dict(update.files)
-        self.assertGreaterEqual(len(expected), 7)
+        self.assertGreaterEqual(len(expected), 6)
         for fail_after in range(1, len(expected) + 1):
             with self.subTest(fail_after=fail_after):
                 writes = 0
@@ -116,7 +115,6 @@ class OperationsTests(unittest.TestCase):
                     {
                         "file": "characters.json",
                         "path": ["Unused"],
-                        "track_source": False,
                     }
                 ],
             }
@@ -142,8 +140,8 @@ class OperationsTests(unittest.TestCase):
         after.finalize()
         merge_results(self.project, target)
         self.prepare("es")
-        self.assertEqual(
-            read_json(target.work / "prepare-report.json")["review_outputs"], []
+        self.assertNotIn(
+            "review_outputs", read_json(target.work / "prepare-report.json")
         )
 
     def test_output_address_changes_preserve_all_group_request_ids(self):
@@ -253,9 +251,7 @@ class OperationsTests(unittest.TestCase):
         self.assertNotEqual(
             read_json(restored.work / "runtime.json"), {"translations": "incorrect"}
         )
-        with patch("scripts.merge.observed_policy", wraps=observed_policy) as policy:
-            merge_results(self.project, restored)
-        self.assertEqual(policy.call_count, 1)
+        merge_results(self.project, restored)
         self.assertEqual(status(restored)["state"], "published")
         (artifact / "results.json").unlink()
         with self.assertRaisesRegex(ValueError, "incomplete"):
@@ -343,32 +339,19 @@ class OperationsTests(unittest.TestCase):
                 parser.parse_args(args)
             self.assertEqual(error.exception.code, 2)
 
-    def test_review_acknowledgement_persists_and_rejects_unknown_paths(self):
+    def test_fresh_work_directory_recovers_terms_without_persistent_state(self):
         target = self.project.targets["es"]
         self.prepare("es")
         self.translate("es")
         merge_results(self.project, target)
-        target = replace(target, style="Formal register")
-        prepare_tasks(self.project, target)
+        write_json(target.glossary, {"Rook": {"reference": "Rook"}})
+        target = replace(target, work=self.root / "fresh-work")
+        plan = prepare_tasks(self.project, target)
+        self.assertEqual(plan.tasks, [])
         setup_session(target.work).finalize()
-        merge_results(self.project, target)
-        pending = review(target)["remaining"]
-        self.assertIn("interface.json", pending)
-        with self.assertRaisesRegex(ValueError, "not in the review list"):
-            review(target, ["unknown.json"])
-        review(target, ["interface.json"])
-        row = next(
-            line
-            for line in run_summary(self.project, [target]).splitlines()
-            if line.startswith("| es |")
-        )
-        self.assertEqual(int(row.split("|")[-2]), len(pending) - 1)
-        prepare_tasks(self.project, target)
-        self.assertNotIn(
-            "interface.json",
-            read_json(target.work / "prepare-report.json")["review_outputs"],
-        )
-        self.assertEqual(review(target, acknowledge_all=True)["remaining"], [])
+        self.assertEqual(merge_results(self.project, target), 0)
+        check_translations(self.project, target)
+        self.assertFalse((self.root / "translation-state").exists())
 
     def test_prune_keeps_active_answers_groups_and_proposals(self):
         target = self.project.targets["es"]

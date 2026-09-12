@@ -9,10 +9,10 @@ from pathlib import Path
 from scripts.adapters import load_adapter
 from scripts.build import process, traverse
 from scripts.config import DEFAULT_CONFIG, Project, Target, load_project, nonempty
-from scripts.glossary import project_terms, read_optional, resolve_glossary
+from scripts.glossary import project_terms, resolve_glossary
 from scripts.merge import apply_updates, prepare_update
-from scripts.models import Catalog, TermBinding
-from scripts.operations import prune_cache, review, run_summary, status
+from scripts.models import Catalog
+from scripts.operations import prune_cache, run_summary, status
 from scripts.prepare import bind_runtime, compile_catalog, prepare_tasks, source_catalog
 from scripts.session import Session, setup_session
 from scripts.translate import translate_plan
@@ -32,16 +32,11 @@ def check_translations(project: Project, target: Target) -> None:
         return
     adapter = load_adapter(project.adapter)
     catalog = adapter.publication(
-        Catalog(entries=[]), target.translations, adapter.settings(project.options)
+        Catalog(entries=[]),
+        target.translations,
+        {**adapter.settings(project.options), "root": str(project.root)},
     )
-    bindings = [
-        *[
-            TermBinding.model_validate(value)
-            for value in read_optional(target.state).get("term_bindings", [])
-        ],
-        *catalog.term_bindings,
-    ]
-    names, terms = project_terms(target.translations, bindings)
+    names, terms = project_terms(target.translations, catalog.term_bindings)
     resolved = resolve_glossary(target.glossary, names, terms)
     count = 0
     for path in target.translations.rglob("*.json"):
@@ -75,7 +70,6 @@ def argument_parser() -> argparse.ArgumentParser:
         "update",
         "config",
         "status",
-        "review",
         "cache",
         "summary",
         "evaluate",
@@ -124,14 +118,6 @@ def argument_parser() -> argparse.ArgumentParser:
                 action="store_true",
                 help="Fetch and prepare; do not call models or publish",
             )
-        if command == "review":
-            acknowledgement = sub.add_mutually_exclusive_group()
-            acknowledgement.add_argument(
-                "--ack",
-                action="append",
-                help="Acknowledge a reviewed relative output path",
-            )
-            acknowledgement.add_argument("--ack-all", action="store_true")
         if command == "cache":
             sub.add_argument("--prune", action="store_true", required=True)
             sub.add_argument("--days", type=positive, default=30)
@@ -179,13 +165,13 @@ def main() -> None:
                         },
                         **{
                             key: str(getattr(target, key))
-                            for key in ("translations", "work", "glossary", "state")
+                            for key in ("translations", "work", "glossary")
                         },
                     }
                 )
             print(json.dumps(records, ensure_ascii=False, indent=2))
             return
-        if args.command in {"status", "review", "cache", "summary"}:
+        if args.command in {"status", "cache", "summary"}:
             if args.command == "summary":
                 text = run_summary(project, targets)
                 if args.output:
@@ -194,16 +180,8 @@ def main() -> None:
                 else:
                     print(text)
                 return
-            if (
-                args.command == "review"
-                and (args.ack or args.ack_all)
-                and len(targets) != 1
-            ):
-                parser.error("Review acknowledgements require exactly one --target")
             if args.command == "status":
                 records = [status(target) for target in targets]
-            elif args.command == "review":
-                records = [review(target, args.ack, args.ack_all) for target in targets]
             else:
                 records = [prune_cache(target, args.days) for target in targets]
             print(json.dumps(records, ensure_ascii=False, indent=2))

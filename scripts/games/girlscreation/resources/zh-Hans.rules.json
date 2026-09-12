@@ -1,7 +1,0 @@
-{
-    "required_terms": {"エスティー": "艾丝缇", "エスティ―": "艾丝缇"},
-    "forbidden_translations": ["艾丝媞", "艾斯蒂"],
-    "name_kinds": ["names"],
-    "name_identifier_pattern": "[A-Za-zＡ-Ｚａ-ｚ0-9０-９＆&？?（）()]",
-    "number_kinds": ["master"]
-}

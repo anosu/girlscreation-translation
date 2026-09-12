@@ -26,13 +26,14 @@
 | `category` / `group` | 文本用途 / 上下文组。 |
 | `source` / `context` | 非空白原文 / 上下文对象或数组。 |
 | `targets` | 发布位置列表。file 是交付目录内的相对 JSON 路径，path 是对象键序列；禁止目录逃逸、隐藏文件和 manifest。 |
-| `targets[].track_source` | 默认为 true，核对固定 ID 对应的原文版本；能从客户端键恢复来源关系时才设为 false。 |
 | `term` | 默认为 false；为 true 时先翻译该条目，并将其声明为标准术语来源。 |
 | `use_terms` | 默认为 false；为 true 时允许精确命中术语复用，并要求结果遵守该译法。 |
 | `reconcile` | 默认为 false；为 true 时按 `targets[].priority` 复用已有译文填补缺失位置，数值越大越优先。保留已有译法；最高优先级存在不同译法时，报告歧义并暂缓填补。 |
 | `rules` | 格式约束，例如 `protected_patterns`、`preserve_tags`、`preserve_newlines`。 |
 
 JSON 适配器自动生成上下文版本和引用。完整字段与校验规则以 [models.py](../scripts/models.py) 和 [Rules](../scripts/config.py) 为准。
+
+增量处理按交付键是否已有有效译文判断。固定 ID 背后的原文修订不自动追踪；需要重译时清除对应译文后重新规划。
 
 ## 自定义模块
 
@@ -44,7 +45,7 @@ JSON 适配器自动生成上下文版本和引用。完整字段与校验规则
 | `publication(catalog, translations, options)` | 返回当前语言的独立 Catalog，补充发布映射和术语声明。 |
 | `context(task, cache, options)` | 返回指定条目的完整场景或相关记录。 |
 
-`fetch`、`extract` 的 options 包含配置目录 `root`，translations 是所选语言的译文目录列表。适配器决定如何筛选原文；本游戏日常跳过所有所选语言都已有译文文件的剧情，masterdata 始终提取。publication 不修改传入的 Catalog 或发布文件。
+`fetch`、`extract`、`publication` 的 options 包含配置目录 `root`。前两者的 translations 是译文目录列表，publication 接收单个目录。适配器决定如何筛选原文；本游戏日常跳过所有所选语言都已有译文文件的剧情，masterdata 始终提取。publication 不修改传入的 Catalog 或发布文件。
 
 自定义条目需提供 `context_version` 和 `references`：版本覆盖翻译所需资料，引用使用快照内的相对路径。上下文变化必须更新版本，发布地址不应影响该版本。
 
@@ -62,6 +63,6 @@ JSON 适配器自动生成上下文版本和引用。完整字段与校验规则
 }
 ```
 
-`reference` 是可选的标准名称标识。已有声明会写入持久状态；`publication` 也须接受空 Catalog，供没有原文快照的交付检查使用。
+`reference` 是可选的标准名称标识。`publication` 须接受空 Catalog，并从现有译文结构或配置的原文导出文件中生成术语声明，供交付检查使用。
 
 适配器测试应覆盖原文修订、同文异境、多位置冲突、完整上下文、部分获取和格式约束。可参考 [test_framework.py](../tests/test_framework.py)。

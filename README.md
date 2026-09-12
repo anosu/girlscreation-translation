@@ -33,7 +33,7 @@ npm run workflow -- check
 
 - 后端优先级：`--backend` > `TRANSLATION_BACKEND` > 目标的 `backend` > 项目的 `backend`。
 - 模型优先级：`--model` > `TRANSLATION_MODEL` > 后端的 `model`。
-- 目标可指定 `translations`、`glossary`、`state`、`work` 路径，以及 `style` 风格文件和 `rules` 校验规则。
+- 目标可指定 `translations`、`glossary`、`work` 路径，以及 `style` 风格文件和 `rules` 校验规则。
 - 后端的 `codex.effort` 指定推理强度；`codex.context_window` 指定 token 预算，需与所选模型容量匹配。
 
 `--limit` 仅用于 `prepare` 和 `update`，限制每种语言的计划条目数。新剧情必须整份纳入计划，额度不足时需提高上限，避免发布半份文件。`translate` 执行已有计划；`--dry-run` 只获取和规划，不调用模型。各命令参数可用 `--help` 查看，例如 `npm run workflow -- update --help`。
@@ -44,13 +44,11 @@ npm run workflow -- check
 | --- | --- |
 | 查看进度与下一步 | `status` |
 | 查看汇总 | `summary` |
-| 查看待审阅文件 | `review --target zh-Hans` |
-| 确认已审文件 | `review --target zh-Hans --ack novels/12345.json` |
 | 清理过期的非当前任务缓存 | `cache --prune --days 30` |
 
 翻译中断后可重跑 `translate`，合并中断后可重跑 `merge`。发生人工修改冲突时先核对文件。搬迁工作目录后，用 `setup --config PATH --target zh-Hans` 重新绑定路径，原文快照需保持一致。
 
-译文、[术语表](glossary/README.md) 和 `translation-state/` 需要一起提交；`.cache/` 保存任务缓存。风格或术语变化可能使待办缓存失效，并产生历史译文审阅清单，不会自动整库重翻。
+译文和[术语表](glossary/README.md) 需要提交；`.cache/` 保存任务、答案和运行进度。风格或术语变化可能使待办缓存失效，已有译文不会自动重翻。
 
 Husky 会在提交前根据暂存的配置和译文构建 manifest。`check` 检查交付结构、术语与 manifest；译文语义仍需审阅。
 

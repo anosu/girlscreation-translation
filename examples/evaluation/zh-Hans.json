@@ -7,16 +7,14 @@
             "source": "エスティー",
             "reference": "艾丝缇",
             "review_status": "confirmed",
-            "note": "用户明确确定的角色译名。",
-            "rules": {"required_terms": {"エスティー": "艾丝缇"}}
+            "note": "已有译文的对照样例，不作为运行时的强制译法。"
         },
         {
             "id": "esty-alias",
             "source": "エスティ―",
             "reference": "艾丝缇",
             "review_status": "confirmed",
-            "note": "同一角色的横线字形变体。",
-            "rules": {"required_terms": {"エスティ―": "艾丝缇"}}
+            "note": "横线字形变体的已有译文样例，不作为运行时的强制译法。"
         },
         {
             "id": "title",

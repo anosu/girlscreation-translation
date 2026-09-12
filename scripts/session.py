@@ -62,7 +62,7 @@ class Session:
         instructions = (ROOT / "prompts/agent.md").read_text(encoding="utf-8")
         system = (ROOT / "prompts/agent-system.md").read_text(encoding="utf-8")
         config = {
-            "version": 6,
+            "version": 7,
             "project": self.plan.project,
             "language": self.plan.language,
             "plan": self.plan.id,
@@ -307,7 +307,7 @@ class Session:
         )
         result = Results.model_validate(
             {
-                "version": 6,
+                "version": 7,
                 "plan": self.plan.id,
                 "project": self.plan.project,
                 "language": self.plan.language,

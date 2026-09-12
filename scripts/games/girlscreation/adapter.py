@@ -103,7 +103,7 @@ def extract(
     )
 
     def target(file: str, path: list[str], priority: int = 0) -> dict:
-        return {"file": file, "path": path, "priority": priority, "track_source": False}
+        return {"file": file, "path": path, "priority": priority}
 
     def entry(
         kind: str, group: str, source: str, targets: list[dict], context: Any, **extra
@@ -274,7 +274,6 @@ def publication(catalog: Catalog, translations: Path, options: dict) -> Catalog:
                 "target": {
                     "file": "names.json",
                     "path": [source],
-                    "track_source": False,
                 },
             }
         )
@@ -286,7 +285,6 @@ def publication(catalog: Catalog, translations: Path, options: dict) -> Catalog:
                     "target": {
                         "file": "master.json",
                         "path": [table, "ml_name[]", source],
-                        "track_source": False,
                     },
                 }
             )
@@ -333,7 +331,6 @@ def publication(catalog: Catalog, translations: Path, options: dict) -> Catalog:
                                 file=file,
                                 path=[item.source],
                                 priority=0,
-                                track_source=False,
                             )
                         )
         entries.append(

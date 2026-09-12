@@ -23,7 +23,6 @@ def protected_state(work: Path) -> dict[str, str]:
         work / "runtime.json",
         paths["glossary"],
         paths["project_config"],
-        paths["state"],
     }
     directories = [
         ROOT / name

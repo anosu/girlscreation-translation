@@ -8,14 +8,13 @@ from pydantic import Field, model_validator
 
 from scripts.config import StrictModel, Text
 from scripts.models import (
-    ObservedPolicy,
     ResolvedTerm,
     Task,
     TermBinding,
     TermIndex,
     TermProposal,
 )
-from scripts.utils import digest, read_json
+from scripts.utils import read_json
 from scripts.validate import validate_translation
 
 
@@ -51,32 +50,6 @@ def terms_payload(terms: TermIndex) -> dict:
         source: [term.model_dump() for term in entries]
         for source, entries in sorted(terms.items())
     }
-
-
-def observed_policy(
-    style: str, rules: dict, glossary: dict, names: dict, tables: dict
-) -> dict:
-    return {
-        "style": digest(style),
-        "rules": digest(rules),
-        "terms": terms_payload(resolve_glossary(glossary, names, tables)),
-    }
-
-
-def review_outputs(state: dict, current: dict, files: list[str]) -> list[str]:
-    previous = state.get("observed_policy")
-    if previous:
-        previous = ObservedPolicy.model_validate(previous).model_dump()
-    changed = previous and (
-        any(previous[key] != current[key] for key in ("style", "rules"))
-        or any(
-            current["terms"].get(source) != value
-            for source, value in previous["terms"].items()
-        )
-    )
-    return sorted(
-        set(state.get("review_outputs", [])) | (set(files) if changed else set())
-    )
 
 
 def project_terms(

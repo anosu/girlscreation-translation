@@ -1,19 +1,17 @@
-"""Status, review acknowledgements and bounded cache maintenance."""
+"""Task status and bounded cache maintenance."""
 
 import time
 
 from scripts.config import Project, Target
-from scripts.models import read_state
 from scripts.prepare import read_plan
 from scripts.session import Session, group_key
-from scripts.utils import digest, read_json, write_json
+from scripts.utils import digest, read_json
 
 
 def status(target: Target) -> dict:
     record = {
         "target": target.code,
         "work": str(target.work),
-        "review_outputs": read_state(target.state).get("review_outputs", []),
     }
     if not (target.work / "plan.json").exists():
         return {**record, "state": "not_prepared", "next": "prepare"}
@@ -57,29 +55,6 @@ def status(target: Target) -> dict:
         }
 
 
-def review(
-    target: Target, acknowledged: list[str] | None = None, acknowledge_all: bool = False
-) -> dict:
-    original = target.state.read_bytes() if target.state.exists() else None
-    state = read_state(target.state)
-    files = set(state.get("review_outputs", []))
-    selected = files if acknowledge_all else set(acknowledged or [])
-    if selected - files:
-        raise ValueError(
-            f"Files are not in the review list: {sorted(selected - files)}"
-        )
-    if selected:
-        state["review_outputs"] = sorted(files - selected)
-        if target.state.read_bytes() != original:
-            raise ValueError("Review state changed; retry the acknowledgement")
-        write_json(target.state, state)
-    return {
-        "target": target.code,
-        "acknowledged": sorted(selected),
-        "remaining": sorted(files - selected),
-    }
-
-
 def prune_cache(target: Target, days: int = 30) -> dict:
     """Delete only expired inactive artifacts; never touch a current task or publication."""
     if days <= 0:
@@ -113,20 +88,15 @@ def run_summary(project: Project, targets: list[Target]) -> str:
     lines = [
         f"# Translation update: {project.name}",
         "",
-        "| Target | Selected / available | Reuse candidates | Completed | Remaining | Blocked entries | Review files |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| Target | Selected / available | Reuse candidates | Completed | Remaining | Blocked entries |",
+        "| --- | --- | --- | --- | --- | --- |",
     ]
     for target in targets:
         report_path = target.work / "prepare-report.json"
         report = read_json(report_path) if report_path.exists() else {}
         progress = status(target)
-        review_files = (
-            progress["review_outputs"]
-            if progress["state"] == "published"
-            else report.get("review_outputs", progress["review_outputs"])
-        )
         lines.append(
-            f"| {target.code} | {report.get('tasks', 0)} / {report.get('available_tasks', 0)} | {report.get('reuse_candidates', 0)} | {progress.get('completed', 0)} | {progress.get('remaining', '?')} | {report.get('blocked_entries', 0)} | {len(review_files)} |"
+            f"| {target.code} | {report.get('tasks', 0)} / {report.get('available_tasks', 0)} | {report.get('reuse_candidates', 0)} | {progress.get('completed', 0)} | {progress.get('remaining', '?')} | {report.get('blocked_entries', 0)} |"
         )
         if report.get("existing_variants"):
             lines.extend(

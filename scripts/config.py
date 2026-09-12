@@ -85,7 +85,6 @@ class TargetSettings(StrictModel):
     translations: Text | None = None
     work: Text | None = None
     glossary: Text | None = None
-    state: Text | None = None
     style: Text | None = None
     rules: Text | None = None
 
@@ -137,7 +136,6 @@ class Target:
     glossary: Path
     style: str
     rules: dict
-    state: Path
 
 
 @dataclass(frozen=True)
@@ -270,13 +268,12 @@ def load_project(path: Path = DEFAULT_CONFIG) -> Project:
             values.name or code,
             values.backend,
             resolve(values.translations or f"translations/{code}"),
-            resolve(values.work or f".cache/translation/{settings.id}/work-v6/{code}"),
+            resolve(values.work or f".cache/translation/{settings.id}/work-v7/{code}"),
             resolve(values.glossary or f"glossary/{code}.json"),
             resolve(values.style).read_text(encoding="utf-8")
             if values.style
             else "Translate faithfully and naturally into the specified target language.",
             rules,
-            resolve(values.state or f"translation-state/{settings.id}/{code}.json"),
         )
     sources = resolve(settings.sources or f".cache/translation/{settings.id}/sources")
     occupied = [
@@ -285,7 +282,7 @@ def load_project(path: Path = DEFAULT_CONFIG) -> Project:
         ("project.source_bundle", sources.parent / f"{sources.name}.zip"),
     ]
     for code, target in targets.items():
-        for role in ("translations", "work", "glossary", "state"):
+        for role in ("translations", "work", "glossary"):
             location = getattr(target, role)
             for other_role, other in occupied:
                 if (

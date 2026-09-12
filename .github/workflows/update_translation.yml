@@ -167,8 +167,8 @@ jobs:
         id: cache
         with:
           path: ${{ matrix.work }}
-          key: agent-v6-${{ needs.sources.outputs.project }}-${{ matrix.language }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: agent-v6-${{ needs.sources.outputs.project }}-${{ matrix.language }}-
+          key: agent-v7-${{ needs.sources.outputs.project }}-${{ matrix.language }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: agent-v7-${{ needs.sources.outputs.project }}-${{ matrix.language }}-
       - name: Prepare isolated language queue
         id: queue
         run: |
@@ -222,7 +222,7 @@ jobs:
         if: always() && steps.cache.outcome == 'success'
         with:
           path: ${{ matrix.work }}
-          key: agent-v6-${{ needs.sources.outputs.project }}-${{ matrix.language }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: agent-v7-${{ needs.sources.outputs.project }}-${{ matrix.language }}-${{ github.run_id }}-${{ github.run_attempt }}
       - uses: actions/upload-artifact@v7
         if: always()
         with:

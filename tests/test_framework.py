@@ -15,12 +15,13 @@ from scripts.ci import matrix
 from scripts.codex import configure_action
 from scripts.config import ROOT, load_project
 from scripts.merge import apply_updates, merge_results, prepare_update
+from scripts.models import Task
 from scripts.prepare import prepare_tasks
 from scripts.run import main
 from scripts.session import setup_session
 from scripts.translate import codex_command
 from scripts.utils import read_json, write_json
-from scripts.validate import validate_translation
+from scripts.validate import validate_results, validate_translation
 
 CONFIG = """
 schema_version = 1
@@ -134,14 +135,14 @@ class FrameworkTests(unittest.TestCase):
             )
             self.assertEqual(self.prepare(code)["tasks"], [])
         self.assertNotEqual(
-            self.project.targets["es"].state, self.project.targets["zh-Hans"].state
+            self.project.targets["es"].work, self.project.targets["zh-Hans"].work
         )
         self.assertIn(
             "Target language: es",
             (es.work / "agent-prompt.md").read_text(encoding="utf-8"),
         )
 
-    def test_stable_key_source_changes_are_not_skipped(self):
+    def test_existing_fixed_keys_are_preserved_without_source_history(self):
         self.prepare("es")
         self.translate("es")
         language = self.project.targets["es"]
@@ -151,13 +152,10 @@ class FrameworkTests(unittest.TestCase):
         write_json(self.root / "source.json", entries)
         self.adapter.fetch(self.project.sources, None, self.options)
         plan = self.prepare("es")
-        self.assertEqual(len(plan["tasks"]), 1)
-        self.assertEqual(plan["tasks"][0]["source"], "Continue game")
-        self.translate("es")
-        merge_results(self.project, language)
+        self.assertEqual(plan["tasks"], [])
         self.assertEqual(
             read_json(language.translations / "interface.json")["menu"]["start"],
-            "Continuar partida",
+            "Iniciar partida",
         )
         self.assertEqual(self.prepare("es")["tasks"], [])
 
@@ -190,16 +188,23 @@ class FrameworkTests(unittest.TestCase):
             self.assertEqual(len(payload["include"]), 2)
             self.assertNotIn("private-test-value", json.dumps(payload))
 
-    def test_language_rules_are_optional_and_do_not_leak_chinese_names(self):
-        validate_translation("エスティー", "Esty")
-        with self.assertRaises(ValueError):
-            validate_translation(
-                "エスティー",
-                "Esty",
-                read_json(
-                    ROOT / "scripts/games/girlscreation/resources/zh-Hans.rules.json"
-                ),
-            )
+    def test_project_format_rules_do_not_impose_name_spellings(self):
+        rules = load_project().targets["zh-Hans"].rules
+        self.assertFalse(rules["required_terms"])
+        self.assertFalse(rules["forbidden_translations"])
+        self.assertNotIn("name_identifier_pattern", rules)
+        validate_results(
+            [
+                Task.model_construct(
+                    id="name",
+                    source="Alice",
+                    category="names",
+                    rules={"name_kinds": ["names"]},
+                )
+            ],
+            {"translations": [{"id": "name", "translation": "艾丽丝"}]},
+            rules,
+        )
         with self.assertRaisesRegex(ValueError, "configured tags/placeholders"):
             validate_translation(
                 "Hello [player]", "Hola", {"protected_patterns": [r"\[\w+\]"]}
@@ -221,7 +226,7 @@ class FrameworkTests(unittest.TestCase):
         self.config.write_text(
             CONFIG.replace(
                 "[targets.es]",
-                '[targets.es]\nwork = ".cache/translation/other-game/work-v6/zh-Hans"',
+                '[targets.es]\nwork = ".cache/translation/other-game/work-v7/zh-Hans"',
             ),
             encoding="utf-8",
         )
@@ -353,20 +358,20 @@ import scripts.games.girlscreation.adapter
         before = next(t for t in plan["tasks"] if t["entry_id"] == "menu-start")
         write_json(
             self.project.targets["es"].translations / "interface.json",
-            {"menu": {"start": "Unknown old version"}},
+            {"menu": {"start": ""}},
         )
         revised = self.prepare("es")
         after = next(t for t in revised["tasks"] if t["entry_id"] == "menu-start")
         self.assertEqual(before["id"], after["id"])
         self.assertNotEqual(plan["id"], revised["id"])
-        self.assertEqual(after["reason"], "source_changed")
+        self.assertEqual(after["reason"], "missing")
         self.assertIsNone(after["reuse"])
 
     def test_game_constraints_are_opt_in(self):
         validate_translation("First\nSecond", "Una línea")
         validate_translation("value < 3", "valor menor que tres")
 
-    def test_policy_change_reports_review_without_retranslating_publications(self):
+    def test_policy_change_does_not_rewrite_publications_or_generate_review_state(self):
         from dataclasses import replace
 
         target = self.project.targets["es"]
@@ -377,10 +382,10 @@ import scripts.games.girlscreation.adapter
         plan = prepare_tasks(self.project, changed)
         self.assertEqual(plan.tasks, [])
         report = read_json(changed.work / "prepare-report.json")
-        self.assertIn("interface.json", report["review_outputs"])
+        self.assertNotIn("review_outputs", report)
         setup_session(changed.work).finalize()
-        merge_results(self.project, changed)
-        self.assertIn("interface.json", read_json(changed.state)["review_outputs"])
+        self.assertEqual(merge_results(self.project, changed), 0)
+        self.assertFalse((self.root / "translation-state").exists())
         self.assertEqual(
             read_json(changed.translations / "interface.json")["menu"]["start"],
             "Iniciar partida",

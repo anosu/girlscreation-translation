@@ -95,11 +95,11 @@ class ManifestTests(unittest.TestCase):
 
 class ParsingTests(unittest.TestCase):
     def test_story_commands_and_context(self):
-        script = 'title,題名,\nmessage,,"正文<br>{0}",\nmsgvoicesync,chara_9,エスティー,台詞,voice\nwait,1'
+        script = 'title,題名,\nmessage,,"正文<br>{0}",\nmsgvoicesync,chara_9,話者,台詞,voice\nwait,1'
         rows = parse_script(script)
         self.assertEqual([r["kind"] for r in rows], ["title", "message", "message"])
         self.assertEqual(rows[1]["message"], '"正文<br>{0}"')
-        self.assertEqual(rows[2]["name"], "エスティー")
+        self.assertEqual(rows[2]["name"], "話者")
         self.assertEqual(rows[2]["line"], 3)
         with self.assertRaises(ValueError):
             parse_script("msgvoicesync,broken")
@@ -148,7 +148,6 @@ class PipelineTests(unittest.TestCase):
             self.project.targets["zh-Hans"],
             translations=self.translations,
             work=self.work,
-            state=self.root / "state.json",
             glossary=self.root / "glossary.json",
         )
         write_json(self.target.glossary, read_json(ROOT / "glossary/zh-Hans.json"))
@@ -242,7 +241,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(title["reuse"], "旧标题")
         self.assertEqual(len(title["targets"]), 1)
         self.fill(plan)
-        self.assertEqual(merge_results(self.project, self.target), 5)
+        self.assertEqual(merge_results(self.project, self.target), 4)
         self.assertEqual(merge_results(self.project, self.target), 0)
         master = read_json(self.translations / "master.json")
         self.assertEqual(master["mNovels"]["ml_title[]"]["題名"], "旧标题")
@@ -389,22 +388,14 @@ class PipelineTests(unittest.TestCase):
 
 
 class ValidationTests(unittest.TestCase):
-    def test_markup_placeholders_and_canonical_name(self):
+    def test_markup_and_placeholders(self):
         rules = {"preserve_tags": True, "protected_patterns": [PROTECTED.pattern]}
         validate_translation(
             "値{0}<br><color=red>文</color>", "值{0}<br><color=red>文本</color>", rules
         )
-        for value in ["值<br>", "值{1}<br>", "值{0}", "", "艾丝媞"]:
+        for value in ["值<br>", "值{1}<br>", "值{0}", ""]:
             with self.assertRaises(ValueError):
                 validate_translation("値{0}<br>", value, rules)
-        with self.assertRaises(ValueError):
-            validate_translation(
-                "エスティー",
-                "艾斯蒂",
-                read_json(
-                    ROOT / "scripts/games/girlscreation/resources/zh-Hans.rules.json"
-                ),
-            )
         with self.assertRaisesRegex(ValueError, "tag order"):
             validate_translation("<b><i>文</i></b>", "<i><b>文本</b></i>", rules)
         with self.assertRaisesRegex(ValueError, "duplicate"):

@@ -10,14 +10,12 @@ from pathlib import Path
 from scripts.adapters import load_adapter
 from scripts.config import Project, Target
 from scripts.glossary import (
-    observed_policy,
     project_terms,
     read_optional,
     resolve_glossary,
-    review_outputs,
     term_for,
 )
-from scripts.models import Catalog, CompiledCatalog, Plan, TermBinding, read_state
+from scripts.models import Catalog, CompiledCatalog, Plan
 from scripts.utils import digest, directory_digest, read_json, write_bytes, write_json
 from scripts.validate import combine_rules
 
@@ -70,7 +68,6 @@ def bind_runtime(work: Path, project: Project, target: Target) -> None:
                 "translations": target.translations,
                 "sources": project.sources,
                 "glossary": target.glossary,
-                "state": target.state,
             }.items()
         },
     )
@@ -239,11 +236,11 @@ def prepare_tasks(
     *,
     check_existing: bool = False,
 ) -> Plan:
-    """Preserve published text, select missing/revised entries, and plan terms first."""
+    """Preserve published text, select missing translations, and plan terms first."""
     if limit is not None and limit <= 0:
         raise ValueError("Task limit must be greater than zero")
     old_plan = target.work / "plan.json"
-    if old_plan.exists() and read_json(old_plan).get("version") != 6:
+    if old_plan.exists() and read_json(old_plan).get("version") != 7:
         raise ValueError(
             "This work directory contains legacy artifacts; configure a new work directory. The old cache has been preserved."
         )
@@ -253,9 +250,8 @@ def prepare_tasks(
         catalog
         or source_catalog(project, targets=[target], check_existing=check_existing),
         target.translations,
-        options,
+        {**options, "root": str(project.root)},
     )
-    state = read_state(target.state)
     if catalog.target_files and catalog.target_files.get(target.code) != digest(
         published_files(target.translations)
     ):
@@ -269,21 +265,8 @@ def prepare_tasks(
         "language": target.code,
         "source_language": project.source_language,
     }
-    if state and any(state.get(k) != v for k, v in identity.items()):
-        raise ValueError(
-            "Source state belongs to another project, source language or target; migrate explicitly"
-        )
     term_bindings = list(
-        {
-            digest(b.model_dump()): b
-            for b in [
-                *[
-                    TermBinding.model_validate(value)
-                    for value in state.get("term_bindings", [])
-                ],
-                *catalog.term_bindings,
-            ]
-        }.values()
+        {digest(b.model_dump()): b for b in catalog.term_bindings}.values()
     )
     documents: dict[str, dict] = {}
 
@@ -311,7 +294,6 @@ def prepare_tasks(
     blocked_files: set[str] = set()
     for entry in catalog.entries:
         bindings = []
-        source_revision = digest([project.source_language, entry.source])
         for binding in entry.targets:
             raw = binding.model_dump()
             file = binding.file
@@ -325,13 +307,7 @@ def prepare_tasks(
                 {**raw, "before": translation_at(document(file), binding.path)}
             )
         bindings = list({(b["file"], tuple(b["path"])): b for b in bindings}.values())
-        valid = lambda b: (
-            bool(b["before"] and b["before"].strip())
-            and (
-                not b["track_source"]
-                or state.get("sources", {}).get(entry.id) == source_revision
-            )
-        )
+        valid = lambda b: bool(b["before"] and b["before"].strip())
         reuse = None
         if entry.reconcile:
             if not check_existing and all(valid(b) for b in bindings):
@@ -375,10 +351,8 @@ def prepare_tasks(
             bindings = [b for b in bindings if not valid(b)]
             if not bindings:
                 continue
-            reason = (
-                "source_changed" if any(b["before"] for b in bindings) else "missing"
-            )
-            if entry.use_terms and reason == "missing":
+            reason = "missing"
+            if entry.use_terms:
                 term = term_for(glossary, entry.source, entry.category)
                 reuse = term.translation if term else None
         rules = combine_rules(entry.rules, target.rules)
@@ -419,7 +393,7 @@ def prepare_tasks(
     tasks = select_tasks(tasks, limit, atomic_files, blocked_files)
     plan = Plan.model_validate(
         {
-            "version": 6,
+            "version": 7,
             "id": "pending",
             **identity,
             "project_name": project.name,
@@ -431,7 +405,6 @@ def prepare_tasks(
             "source_version": catalog.source_version,
             "source_files": catalog.source_files,
             "check_existing": check_existing,
-            "source_state_before": digest(state),
             "term_bindings": term_bindings,
             "published_files": published_files(target.translations),
             "tasks": tasks,
@@ -462,19 +435,11 @@ def prepare_tasks(
             category: sum(task.category == category for task in plan.tasks)
             for category in sorted({task.category for task in plan.tasks})
         },
-        "review_outputs": review_outputs(
-            state,
-            observed_policy(
-                target.style, target.rules, read_optional(target.glossary), names, terms
-            ),
-            plan.published_files,
-        ),
     }
     write_json(target.work / "prepare-report.json", report)
     print(
         f"{target.code}: selected {len(tasks)}/{available} tasks; {report['reuse_candidates']} reuse candidates; "
-        f"{report['blocked_entries']} entries blocked by ambiguous translations; "
-        f"{len(report['review_outputs'])} files to review. Report: {target.work / 'prepare-report.json'}",
+        f"{report['blocked_entries']} entries blocked by ambiguous translations. Report: {target.work / 'prepare-report.json'}",
         flush=True,
     )
     return plan

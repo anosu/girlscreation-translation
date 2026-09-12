@@ -33,7 +33,6 @@ class IncrementalTests(unittest.TestCase):
                         "file": name,
                         "path": ["難しいテーマ"],
                         "priority": 100,
-                        "track_source": False,
                     }
                     for name in ("one.json", "two.json")
                 ],
@@ -74,13 +73,14 @@ class IncrementalTests(unittest.TestCase):
         prepare_tasks(self.project, target, limit=1)
         self.translate("es")
         merge_results(self.project, target)
-        self.assertNotIn("resource_versions", read_json(target.state))
+        self.assertFalse((self.root / "translation-state").exists())
         plan = prepare_tasks(self.project, target)
         self.assertEqual(len(plan.tasks), 3)
         self.translate("es")
         merge_results(self.project, target)
         source = read_json(self.root / "source.json")
         source[-1]["source"] = "Continue game"
+        source[-1]["targets"][0]["path"] = ["menu", "continue"]
         write_json(self.root / "source.json", source)
         self.adapter.fetch(self.project.sources, None, self.options)
         self.assertEqual(len(prepare_tasks(self.project, target).tasks), 1)
@@ -119,7 +119,7 @@ class IncrementalTests(unittest.TestCase):
         catalog = source_catalog(self.project)
         self.assertEqual(len(prepare_tasks(self.project, chinese, catalog).tasks), 4)
         self.assertEqual(prepare_tasks(self.project, spanish, catalog).tasks, [])
-        self.assertFalse(chinese.state.exists())
+        self.assertFalse(chinese.translations.exists())
 
     def test_exported_snapshot_preserves_integrity_without_other_cache_files(self):
         target = self.project.targets["es"]
@@ -162,7 +162,7 @@ class IncrementalTests(unittest.TestCase):
                 "context": {},
                 "reconcile": True,
                 "targets": [
-                    {"file": name, "path": ["難しいテーマ"], "track_source": False}
+                    {"file": name, "path": ["難しいテーマ"]}
                     for name in ("one.json", "two.json", "three.json")
                 ],
             }
@@ -194,7 +194,7 @@ class GirlsIncrementalTests(unittest.TestCase):
         plan = prepare_tasks(self.project, self.target)
         self.assertEqual({t.source for t in plan.tasks}, {"題名", "新道具", "説明{0}"})
         self.finish()
-        self.assertNotIn("resource_versions", read_json(self.target.state))
+        self.assertFalse((self.root / "translation-state").exists())
         plan = prepare_tasks(self.project, self.target, check_existing=True)
         self.assertEqual({t.source for t in plan.tasks}, {"新登場人物", "本文<br>{0}"})
         self.assertEqual(

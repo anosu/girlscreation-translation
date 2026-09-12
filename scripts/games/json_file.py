@@ -106,15 +106,16 @@ def extract(
 
 
 def publication(catalog: Catalog, translations: Path, options: dict) -> Catalog:
+    entries = read_json(Path(options["root"]) / options["input"])
     bindings = [
         {
-            "source": entry.source,
-            "reference": entry.source,
-            "target": target.model_dump(),
+            "source": entry["source"],
+            "reference": entry["source"],
+            "target": target,
         }
-        for entry in catalog.entries
-        if entry.term
-        for target in entry.targets
+        for entry in entries
+        if entry.get("term")
+        for target in entry["targets"]
     ]
     return catalog.model_copy(
         update={
