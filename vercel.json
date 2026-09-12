@@ -1,7 +1,14 @@
 {
-  "functions": {
-    "app.ts": {
-      "includeFiles": "translations/**"
+  "builds": [
+    {
+      "src": "app.ts",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": "translations/**"
+      }
     }
-  }
+  ],
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/app.ts" }
+  ]
 }
