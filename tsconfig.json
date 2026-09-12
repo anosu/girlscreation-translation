@@ -6,7 +6,8 @@
     "noEmit": true,
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
-    "types": ["node"]
+    "types": ["node"],
+    "typeRoots": ["./node_modules/@types"]
   },
   "include": ["app.ts"]
 }
