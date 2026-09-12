@@ -83,7 +83,7 @@ def argument_parser() -> argparse.ArgumentParser:
         sub = commands.add_parser(command)
         if command != "evaluate":
             sub.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
-        if command not in {"fetch", "catalog", "evaluate"}:
+        if command != "evaluate":
             sub.add_argument(
                 "--target",
                 action="append",
@@ -91,6 +91,18 @@ def argument_parser() -> argparse.ArgumentParser:
             )
         if command in {"fetch", "update"}:
             sub.add_argument("--source-id", action="append")
+        if command in {"fetch", "catalog", "prepare", "update"}:
+            sub.add_argument(
+                "--check-existing",
+                action="store_true",
+                help="Also inspect previously published content",
+            )
+        if command == "catalog":
+            sub.add_argument(
+                "--export",
+                action="store_true",
+                help="Bundle only sources needed by the compiled catalog",
+            )
         if command in {"prepare", "update"}:
             sub.add_argument(
                 "--limit",
@@ -200,16 +212,36 @@ def main() -> None:
         options = adapter.settings(project.options)
         if args.command in {"fetch", "update"}:
             adapter.fetch(
-                project.sources, args.source_id, {**options, "root": str(project.root)}
+                project.sources,
+                args.source_id,
+                {**options, "root": str(project.root)},
+                translations=[target.translations for target in targets],
+                check_existing=args.check_existing,
             )
         if args.command == "catalog":
-            catalog = compile_catalog(project)
+            catalog = compile_catalog(
+                project,
+                targets=targets,
+                check_existing=args.check_existing,
+                export=args.export,
+            )
             print(f"Compiled {len(catalog.entries)} entries: {project.catalog}")
             return
         if args.command in {"prepare", "update"}:
-            catalog = source_catalog(project, getattr(args, "catalog", None))
+            catalog = source_catalog(
+                project,
+                getattr(args, "catalog", None),
+                targets=targets,
+                check_existing=args.check_existing,
+            )
             for target in targets:
-                prepare_tasks(project, target, catalog, args.limit)
+                prepare_tasks(
+                    project,
+                    target,
+                    catalog,
+                    args.limit,
+                    check_existing=args.check_existing,
+                )
             if args.command == "update" and args.dry_run:
                 print("Dry run complete. No model calls or publication performed.")
                 return
@@ -232,7 +264,9 @@ def main() -> None:
         if args.command in {"merge", "update"}:
             updates = [prepare_update(project, target) for target in targets]
             print(f"Updated {apply_updates(updates)} publication files")
-        if args.command in {"check", "update"}:
+        if args.command == "check" or (
+            args.command == "update" and args.check_existing
+        ):
             for target in targets:
                 check_translations(project, target)
     except (ValueError, KeyError, OSError, subprocess.SubprocessError) as error:

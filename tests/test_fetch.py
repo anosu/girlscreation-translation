@@ -14,6 +14,61 @@ from scripts.utils import read_json, write_json
 
 
 class FetchTests(unittest.TestCase):
+    def test_daily_fetch_uses_publications_even_with_an_empty_cache(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            cache, chinese, spanish = (root / name for name in ("sources", "zh", "es"))
+            write_json(chinese / "novels/12345.json", {"本文": "现有译文"})
+            assets = [
+                {"n": "notinit/novel_script/mas_12345.dmm", "h": "a"},
+                {"n": "notinit/novel_script/mas_12346.dmm", "h": "b"},
+            ]
+            downloads = []
+
+            def request(_client, path, _params=None):
+                if path.endswith("/master.json"):
+                    return SimpleNamespace(
+                        json=lambda: {"d": [{"n": "master.dmm", "h": "master-hash"}]}
+                    )
+                if path.endswith("/assetbundle.json"):
+                    return SimpleNamespace(json=lambda: {"d": assets})
+                downloads.append(Path(path).stem)
+                return SimpleNamespace(content=Path(path).stem.encode())
+
+            with (
+                patch("scripts.games.girlscreation.fetch.request", side_effect=request),
+                patch(
+                    "scripts.games.girlscreation.fetch.text_assets",
+                    return_value={"mItems": b"master"},
+                ),
+                patch(
+                    "scripts.games.girlscreation.fetch.decrypt_master_text",
+                    return_value=[],
+                ),
+                patch(
+                    "scripts.games.girlscreation.fetch.parse_bundle",
+                    side_effect=lambda raw: (
+                        raw.decode(),
+                        "title,題名,\nmessage,話者,本文,",
+                    ),
+                ),
+            ):
+                index = fetch_sources(cache, translations=[chinese])
+                self.assertEqual(downloads, ["master", "mas_12346"])
+                self.assertEqual(index["fetched_novels"], ["12346"])
+                self.assertFalse((cache / "novels/12345.json").exists())
+                write_json(chinese / "novels/12346.json", {"本文": "新译文"})
+                assets[0]["h"] = "updated"
+                downloads.clear()
+                fetch_sources(cache, translations=[chinese])
+                self.assertEqual(downloads, [])
+                write_json(spanish / "novels/12346.json", {"本文": "Traducción"})
+                fetch_sources(cache, translations=[chinese, spanish])
+                self.assertEqual(downloads, ["mas_12345"])
+                downloads.clear()
+                fetch_sources(cache, translations=[chinese], check_existing=True)
+                self.assertCountEqual(downloads, ["mas_12345", "mas_12346"])
+
     def test_hash_changes_and_partial_fetch_preserve_cache(self):
         with tempfile.TemporaryDirectory() as temporary:
             cache = Path(temporary)

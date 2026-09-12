@@ -221,7 +221,7 @@ class FrameworkTests(unittest.TestCase):
         self.config.write_text(
             CONFIG.replace(
                 "[targets.es]",
-                '[targets.es]\nwork = ".cache/translation/other-game/work-v5/zh-Hans"',
+                '[targets.es]\nwork = ".cache/translation/other-game/work-v6/zh-Hans"',
             ),
             encoding="utf-8",
         )
@@ -389,7 +389,7 @@ import scripts.games.girlscreation.adapter
     def test_stale_output_is_reported_and_preserved(self):
         target = self.project.targets["es"]
         write_json(target.translations / "retired.json", {"old": "Keep this"})
-        self.prepare("es")
+        prepare_tasks(self.project, target, check_existing=True)
         report = read_json(target.work / "prepare-report.json")
         self.assertIn(
             {"file": "retired.json", "path": ["old"]}, report["unmapped_outputs"]

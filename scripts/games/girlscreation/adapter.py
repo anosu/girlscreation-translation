@@ -2,14 +2,15 @@
 
 import re
 from collections import defaultdict
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
 from pydantic import Field
 
 from scripts.config import StrictModel, Text
-from scripts.models import Catalog
-from scripts.utils import digest, read_json
+from scripts.models import Binding, Catalog, TermBinding
+from scripts.utils import digest, directory_digest, read_json
 from scripts.validate import PROTECTED
 
 TITLE_TABLES = {"mNovels", "mIntermissionNovels"}
@@ -42,16 +43,56 @@ def source_text(value: Any, kind: str, index: int = 0) -> str | None:
     return value or None
 
 
-def fetch(cache: Path, selection: list[str] | None, options: dict) -> dict:
+def fetch(
+    cache: Path,
+    selection: list[str] | None,
+    options: dict,
+    *,
+    translations: list[Path] | None = None,
+    check_existing: bool = False,
+) -> dict:
     """Refresh game snapshots once for all target languages."""
     from scripts.games.girlscreation.fetch import fetch_sources
 
-    return fetch_sources(cache, selection)
+    return fetch_sources(
+        cache, selection, translations=translations, check_existing=check_existing
+    )
 
 
-def extract(cache: Path, options: dict) -> Catalog:
+def select_novels(
+    novel_ids: Iterable[str],
+    translations: list[Path] | None,
+    check_existing: bool = False,
+) -> set[str]:
+    """A published novel is skipped unless an existing-content check was requested."""
+    return {
+        novel_id
+        for novel_id in novel_ids
+        if check_existing
+        or translations is None
+        or any(
+            not (root / "novels" / f"{novel_id}.json").is_file()
+            for root in translations
+        )
+    }
+
+
+def extract(
+    cache: Path,
+    options: dict,
+    *,
+    translations: list[Path] | None = None,
+    check_existing: bool = False,
+) -> Catalog:
     """Emit source entries; let the core handle language-specific reuse and diffs."""
     index = read_json(cache / "index.json")
+    selected = select_novels(
+        index["novels"], translations, check_existing or index.get("partial", False)
+    )
+    if not selected <= set(index.get("fetched_novels", index["novels"])):
+        raise ValueError(
+            "Required novels were not fetched; rerun fetch with the same targets and check-existing mode"
+        )
     master = read_json(cache / "master.json")
     schema = read_json(Path(options["root"]) / options["master_fields"])
     entries = []
@@ -87,24 +128,22 @@ def extract(cache: Path, options: dict) -> Catalog:
             }
         )
 
-    for novel_id in sorted(index["novels"]):
+    for novel_id in sorted(selected):
         messages = read_json(cache / "novels" / f"{novel_id}.json")["messages"]
         title = next((m["message"] for m in messages if m["kind"] == "title"), "")
         repeated = defaultdict(list)
-        for position, message in enumerate(messages):
+        for message in messages:
             source = message["message"]
             context = {
                 "novel_id": novel_id,
                 "title": title,
                 "line": message["line"],
                 "speaker": message["name"],
-                "previous": messages[max(0, position - 2) : position],
-                "next": messages[position + 1 : position + 3],
             }
             if message["name"]:
                 names[message["name"]].append(context)
             if message["kind"] == "title":
-                titles[source].append(target(f"novels/{novel_id}.json", [source], 100))
+                titles[source].append(target(f"novels/{novel_id}.json", [source]))
                 title_context[source].append({"novel_id": novel_id, "kind": "title"})
             else:
                 repeated[source].append(context)
@@ -143,15 +182,8 @@ def extract(cache: Path, options: dict) -> Catalog:
                     continue
                 row_id = row.get("id", row.get("series_no"))
                 if table in TITLE_TABLES:
-                    novel_id = str(row.get("id", ""))
-                    if (
-                        index.get("partial")
-                        and table == "mNovels"
-                        and novel_id not in index["novels"]
-                    ):
-                        continue
                     titles[source].append(
-                        target("master.json", [table, output_field, source])
+                        target("master.json", [table, output_field, source], 100)
                     )
                     title_context[source].append(
                         {"table": table, "field": field, "record_id": row_id}
@@ -180,6 +212,8 @@ def extract(cache: Path, options: dict) -> Catalog:
         )
     for item in entries:
         references = {"master.json"} if item["category"] == "master" else set()
+        if any(t["file"] == "master.json" for t in item["targets"]):
+            references.add("master.json")
         contexts = (
             item["context"]
             if isinstance(item["context"], list)
@@ -197,7 +231,9 @@ def extract(cache: Path, options: dict) -> Catalog:
         for reference in item["references"]:
             if reference not in versions:
                 path = cache / reference
-                versions[reference] = digest(read_json(path)) if path.exists() else None
+                versions[reference] = (
+                    directory_digest(cache, [reference]) if path.exists() else None
+                )
         item["context_version"] = digest(
             [item["context"], {r: versions[r] for r in item["references"]}]
         )
@@ -208,13 +244,24 @@ def extract(cache: Path, options: dict) -> Catalog:
         ):
             item["term"] = True
     return Catalog.model_validate(
-        {"entries": entries, "complete": not index.get("partial", False)}
+        {
+            "entries": entries,
+            "complete": not index.get("partial", False)
+            and selected == set(index["novels"]),
+            "source_files": [
+                "index.json",
+                "master.json",
+                *[f"novels/{novel_id}.json" for novel_id in sorted(selected)],
+            ],
+            "atomic_files": [
+                f"novels/{novel_id}.json" for novel_id in sorted(selected)
+            ],
+        }
     )
 
 
 def publication(catalog: Catalog, translations: Path, options: dict) -> Catalog:
     """Resolve existing title locations and normalize terminology for one target."""
-    result = catalog.model_dump()
     names_path, master_path = translations / "names.json", translations / "master.json"
     names = read_json(names_path) if names_path.exists() else {}
     master = read_json(master_path) if master_path.exists() else {}
@@ -243,35 +290,65 @@ def publication(catalog: Catalog, translations: Path, options: dict) -> Catalog:
                     },
                 }
             )
-    for item in result["entries"]:
-        if item["term"]:
+    entries = []
+    historical: dict[str, dict] = {"master.json": master, "names.json": names}
+
+    def populated(binding: Binding) -> bool:
+        if binding.file not in historical:
+            path = translations / binding.file
+            historical[binding.file] = read_json(path) if path.exists() else {}
+        value = historical[binding.file]
+        for key in binding.path:
+            value = value.get(key, {}) if isinstance(value, dict) else {}
+        return isinstance(value, str) and bool(value.strip())
+
+    for item in catalog.entries:
+        if item.term:
             bindings.append(
                 {
-                    "source": item["source"],
-                    "reference": item["source"]
-                    if item["category"] == "names"
-                    else None,
-                    "target": item["targets"][0],
+                    "source": item.source,
+                    "reference": item.source if item.category == "names" else None,
+                    "target": item.targets[0].model_dump(),
                 }
             )
-        if item["reconcile"]:
-            for record in item["context"].get("references", []):
+        targets = list(item.targets)
+        if (
+            item.reconcile
+            and isinstance(item.context, dict)
+            and (catalog.check_existing or any(not populated(t) for t in targets))
+        ):
+            for record in item.context.get("references", []):
                 if record.get("table") == "mNovels" and re.fullmatch(
                     r"\d+", str(record["record_id"])
                 ):
                     file = f"novels/{record['record_id']}.json"
+                    if any(t.file == file and t.path == [item.source] for t in targets):
+                        continue
                     path = translations / file
-                    if path.exists() and item["source"] in read_json(path):
-                        item["targets"].append(
-                            {
-                                "file": file,
-                                "path": [item["source"]],
-                                "priority": 100,
-                                "track_source": False,
-                            }
+                    if file not in historical:
+                        historical[file] = read_json(path) if path.exists() else {}
+                    if item.source in historical[file]:
+                        targets.append(
+                            Binding(
+                                file=file,
+                                path=[item.source],
+                                priority=0,
+                                track_source=False,
+                            )
                         )
-    result["term_bindings"] = bindings
-    return Catalog.model_validate(result)
+        entries.append(
+            item.model_copy(update={"targets": targets})
+            if targets != item.targets
+            else item
+        )
+    return catalog.model_copy(
+        update={
+            "entries": entries,
+            "term_bindings": [
+                TermBinding.model_validate(binding) for binding in bindings
+            ],
+        }
+    )
 
 
 def context(task: dict, cache: Path, options: dict) -> dict:

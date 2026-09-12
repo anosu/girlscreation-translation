@@ -203,7 +203,9 @@ class PipelineTests(unittest.TestCase):
         )
 
     def prepare(self):
-        return prepare_tasks(self.project, self.target).model_dump()
+        return prepare_tasks(
+            self.project, self.target, check_existing=True
+        ).model_dump()
 
     def fill(self, plan):
         values = {
@@ -237,14 +239,14 @@ class PipelineTests(unittest.TestCase):
         plan = self.prepare()
         self.assertEqual(plan["tasks"][0]["category"], "names")
         title = next(t for t in plan["tasks"] if t["source"] == "題名")
-        self.assertEqual(title["reuse"], "既有标题")
-        self.assertEqual(len(title["targets"]), 3)
+        self.assertEqual(title["reuse"], "旧标题")
+        self.assertEqual(len(title["targets"]), 1)
         self.fill(plan)
         self.assertEqual(merge_results(self.project, self.target), 5)
         self.assertEqual(merge_results(self.project, self.target), 0)
         master = read_json(self.translations / "master.json")
-        self.assertEqual(master["mNovels"]["ml_title[]"]["題名"], "既有标题")
-        self.assertEqual(master["mNovels"]["title"]["題名"], "既有标题")
+        self.assertEqual(master["mNovels"]["ml_title[]"]["題名"], "旧标题")
+        self.assertEqual(master["mNovels"]["title"]["題名"], "旧标题")
         self.assertEqual(
             read_json(self.translations / "novels/12345.json")["旧本文"], "保留译文"
         )
@@ -254,7 +256,14 @@ class PipelineTests(unittest.TestCase):
         plan = self.prepare()
         self.fill(plan)
         file = self.translations / "novels/12345.json"
-        write_json(file, {"題名": "人工修订标题", "旧本文": "保留译文"})
+        write_json(
+            file,
+            {
+                "題名": "既有标题",
+                "旧本文": "保留译文",
+                "本文<br>{0}": "人工译文<br>{0}",
+            },
+        )
         before = {p: p.read_bytes() for p in self.translations.rglob("*.json")}
         with self.assertRaisesRegex(ValueError, "changed since prepare"):
             merge_results(self.project, self.target)

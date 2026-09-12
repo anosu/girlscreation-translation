@@ -35,7 +35,11 @@ class Session:
         self.translations, self.cache, self.glossary_path = (
             paths[key] for key in ("translations", "sources", "glossary")
         )
-        if initialize and directory_digest(self.cache) != self.plan.source_version:
+        if (
+            initialize
+            and directory_digest(self.cache, self.plan.source_files)
+            != self.plan.source_version
+        ):
             raise ValueError("Source snapshot changed since prepare; run prepare again")
         self.base_glossary = read_optional(self.glossary_path)
         self.documents = {
@@ -58,7 +62,7 @@ class Session:
         instructions = (ROOT / "prompts/agent.md").read_text(encoding="utf-8")
         system = (ROOT / "prompts/agent-system.md").read_text(encoding="utf-8")
         config = {
-            "version": 5,
+            "version": 6,
             "project": self.plan.project,
             "language": self.plan.language,
             "plan": self.plan.id,
@@ -281,7 +285,10 @@ class Session:
         return {"proposals": len(combined)}
 
     def finalize(self) -> dict:
-        if directory_digest(self.cache) != self.plan.source_version:
+        if (
+            directory_digest(self.cache, self.plan.source_files)
+            != self.plan.source_version
+        ):
             raise ValueError("Source snapshot changed since prepare")
         status = self.status()
         if status["remaining"]:
@@ -300,7 +307,7 @@ class Session:
         )
         result = Results.model_validate(
             {
-                "version": 5,
+                "version": 6,
                 "plan": self.plan.id,
                 "project": self.plan.project,
                 "language": self.plan.language,

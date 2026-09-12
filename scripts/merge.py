@@ -63,7 +63,13 @@ def prepare_update(project: Project, target: Target) -> Update:
         plan.tasks, {"translations": result.translations}, plan.rules
     )
     existing = set(target.translations.rglob("*.json"))
-    published = {path: path.read_bytes() for path in existing}
+    inspected = (
+        existing
+        if plan.tasks or plan.check_existing
+        else {target.translations / b.target.file for b in plan.term_bindings}
+        & existing
+    )
+    published = {path: path.read_bytes() for path in inspected}
     originals: dict[Path, bytes | None] = dict(published)
     documents, claims = {}, {}
     for task in plan.tasks:
@@ -134,8 +140,8 @@ def prepare_update(project: Project, target: Target) -> Update:
     }
     if state_before and any(state_before.get(k) != v for k, v in identity.items()):
         raise ValueError("Source state belongs to another project or language")
-    if bindings:
-        if digest(state_before) != plan.source_state_before and any(
+    if bindings and digest(state_before) != plan.source_state_before:
+        if any(
             state_before.get("sources", {}).get(k) != v for k, v in bindings.items()
         ):
             raise ValueError("Source state changed since prepare")
@@ -166,7 +172,12 @@ def prepare_update(project: Project, target: Target) -> Update:
         for path, raw in published.items()
     }
     content.update({name: encoded(data) for name, data in documents.items()})
-    for name, raw in content.items():
+    checked = (
+        content
+        if plan.check_existing
+        else {name: encoded(data) for name, data in documents.items()}
+    )
+    for name, raw in checked.items():
         if name == "manifest.json":
             continue
         for key, value in traverse(json.loads(raw)):
@@ -174,9 +185,10 @@ def prepare_update(project: Project, target: Target) -> Update:
                 term in value for term in target.rules.get("forbidden_translations", [])
             ):
                 raise ValueError(f"Invalid published translation: {name}: {key}")
-    manifest = target.translations / "manifest.json"
-    originals.setdefault(manifest, None)
-    files[manifest] = make_manifest(content)
+    if documents or plan.check_existing:
+        manifest = target.translations / "manifest.json"
+        originals.setdefault(manifest, None)
+        files[manifest] = make_manifest(content)
     return Update(
         target.translations,
         originals,

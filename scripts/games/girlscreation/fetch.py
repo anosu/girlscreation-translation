@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 
+from scripts.games.girlscreation.adapter import select_novels
 from scripts.games.girlscreation.crypto import decrypt_master_text, get_url_params
 from scripts.games.girlscreation.parse import parse_bundle, parse_script, text_assets
 from scripts.utils import read_json, write_json
@@ -42,7 +43,13 @@ def request(
     raise AssertionError("Unreachable")
 
 
-def fetch_sources(cache: Path, novel_ids: list[str] | None = None) -> dict[str, Any]:
+def fetch_sources(
+    cache: Path,
+    novel_ids: list[str] | None = None,
+    *,
+    translations: list[Path] | None = None,
+    check_existing: bool = False,
+) -> dict[str, Any]:
     """Refresh source snapshots by CDN hash; a lost cache can be rebuilt safely."""
     index_path = cache / "index.json"
     versions_path = cache / "versions.json"
@@ -84,7 +91,7 @@ def fetch_sources(cache: Path, novel_ids: list[str] | None = None) -> dict[str, 
             "d"
         ]
         selected = set(novel_ids) if novel_ids else None
-        downloads = []
+        novels = {}
         for asset in assets:
             match = NOVEL_PATTERN.fullmatch(asset["n"])
             if not match or (selected is not None and match[1] not in selected):
@@ -94,15 +101,22 @@ def fetch_sources(cache: Path, novel_ids: list[str] | None = None) -> dict[str, 
                 raise ValueError(f"Multiple assets use novel ID {novel_id}")
             version = {"name": asset["n"], "hash": asset["h"]}
             index["novels"][novel_id] = version
-            if (
-                previous["novels"].get(novel_id) != version
-                or not (cache / "novels" / f"{novel_id}.json").exists()
-            ):
-                downloads.append((novel_id, asset))
+            novels[novel_id] = asset
         if selected is not None and selected != set(index["novels"]):
             raise ValueError(
                 f"Novel IDs not found: {sorted(selected - set(index['novels']))}"
             )
+        wanted = select_novels(
+            novels, translations, check_existing or selected is not None
+        )
+        index["fetched_novels"] = sorted(wanted)
+        downloads = [
+            (novel_id, novels[novel_id])
+            for novel_id in sorted(wanted)
+            if check_existing
+            or previous["novels"].get(novel_id) != index["novels"][novel_id]
+            or not (cache / "novels" / f"{novel_id}.json").exists()
+        ]
 
         def download(item: tuple[str, dict]) -> str:
             novel_id, asset = item
@@ -135,7 +149,7 @@ def fetch_sources(cache: Path, novel_ids: list[str] | None = None) -> dict[str, 
     write_json(index_path, index)
     incomplete.unlink()
     print(
-        f"Source snapshot ready: {len(index['novels'])} novels ({len(downloads)} downloaded)",
+        f"Source snapshot ready: {len(wanted)}/{len(index['novels'])} novels selected ({len(downloads)} downloaded)",
         flush=True,
     )
     return index

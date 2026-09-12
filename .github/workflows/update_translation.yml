@@ -23,6 +23,10 @@ on:
         description: Prepare tasks without model calls or publication
         type: boolean
         default: true
+      check_existing:
+        description: Check previously published content too
+        type: boolean
+        default: false
       limit:
         description: Maximum tasks per language (0 means all)
         type: string
@@ -44,11 +48,15 @@ on:
       dry_run:
         type: boolean
         default: true
+      check_existing:
+        type: boolean
+        default: false
       limit:
         type: string
         default: '0'
   schedule:
-    - cron: '30 5 * * *'
+    - cron: '30 5 * * 1-6'
+    - cron: '30 5 * * 0'
 
 permissions:
   contents: read
@@ -64,6 +72,7 @@ env:
   TRANSLATION_BACKEND: ${{ inputs.backend || vars.TRANSLATION_BACKEND || '' }}
   TRANSLATION_MODEL: ${{ inputs.model || vars.TRANSLATION_MODEL || '' }}
   TASK_LIMIT: ${{ inputs.limit || vars.TRANSLATION_LIMIT || '0' }}
+  CHECK_EXISTING: ${{ inputs.check_existing || github.event.schedule == '30 5 * * 0' }}
 
 jobs:
   sources:
@@ -73,6 +82,7 @@ jobs:
       matrix: ${{ steps.meta.outputs.matrix }}
       project: ${{ steps.meta.outputs.project }}
       sources: ${{ steps.meta.outputs.sources }}
+      source_bundle: ${{ steps.meta.outputs.source_bundle }}
       catalog: ${{ steps.meta.outputs.catalog }}
       catalog_dir: ${{ steps.meta.outputs.catalog_dir }}
     steps:
@@ -97,8 +107,11 @@ jobs:
           restore-keys: sources-v3-${{ steps.meta.outputs.project }}-
       - name: Fetch shared original data once
         run: |
-          uv run --no-sync python -m scripts.run fetch --config "$PROJECT_CONFIG"
-          uv run --no-sync python -m scripts.run catalog --config "$PROJECT_CONFIG"
+          args=()
+          if [ -n "$TARGET_LANGUAGES" ]; then args+=(--target "$TARGET_LANGUAGES"); fi
+          if [ "$CHECK_EXISTING" = 'true' ]; then args+=(--check-existing); fi
+          uv run --no-sync python -m scripts.run fetch --config "$PROJECT_CONFIG" "${args[@]}"
+          uv run --no-sync python -m scripts.run catalog --config "$PROJECT_CONFIG" --export "${args[@]}"
       - uses: actions/cache/save@v6
         if: always() && steps.cache.outcome == 'success'
         with:
@@ -107,7 +120,8 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: original-sources
-          path: ${{ steps.meta.outputs.sources }}
+          path: ${{ steps.meta.outputs.source_bundle }}
+          compression-level: 0
           retention-days: 7
 
       - uses: actions/upload-artifact@v7
@@ -129,6 +143,8 @@ jobs:
       BACKEND: ${{ matrix.backend }}
       MODEL: ${{ matrix.model }}
       SOURCE_CATALOG: ${{ needs.sources.outputs.catalog }}
+      SOURCE_BUNDLE: ${{ needs.sources.outputs.source_bundle }}
+      SOURCE_DIR: ${{ needs.sources.outputs.sources }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -140,22 +156,25 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: original-sources
-          path: ${{ needs.sources.outputs.sources }}
+          path: ${{ needs.sources.outputs.catalog_dir }}
       - uses: actions/download-artifact@v8
         with:
           name: source-catalog
           path: ${{ needs.sources.outputs.catalog_dir }}
+      - name: Unpack selected sources
+        run: uv run --no-sync python -m zipfile -e "$SOURCE_BUNDLE" "$SOURCE_DIR"
       - uses: actions/cache/restore@v6
         id: cache
         with:
           path: ${{ matrix.work }}
-          key: agent-v5-${{ needs.sources.outputs.project }}-${{ matrix.language }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: agent-v5-${{ needs.sources.outputs.project }}-${{ matrix.language }}-
+          key: agent-v6-${{ needs.sources.outputs.project }}-${{ matrix.language }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: agent-v6-${{ needs.sources.outputs.project }}-${{ matrix.language }}-
       - name: Prepare isolated language queue
         id: queue
         run: |
           args=()
           if [ "$TASK_LIMIT" != '0' ]; then args+=(--limit "$TASK_LIMIT"); fi
+          if [ "$CHECK_EXISTING" = 'true' ]; then args+=(--check-existing); fi
           uv run --no-sync python -m scripts.run prepare --config "$PROJECT_CONFIG" --target "$TARGET_LANGUAGE" --catalog "$SOURCE_CATALOG" "${args[@]}"
           uv run --no-sync python -m scripts.run setup --config "$PROJECT_CONFIG" --target "$TARGET_LANGUAGE"
           uv run --no-sync python -m scripts.agent status --work "$WORK_DIR" > "$RUNNER_TEMP/status.json"
@@ -202,7 +221,7 @@ jobs:
         if: always() && steps.cache.outcome == 'success'
         with:
           path: ${{ matrix.work }}
-          key: agent-v5-${{ needs.sources.outputs.project }}-${{ matrix.language }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: agent-v6-${{ needs.sources.outputs.project }}-${{ matrix.language }}-${{ github.run_id }}-${{ github.run_attempt }}
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -247,7 +266,9 @@ jobs:
           fi
           uv run --no-sync python -m scripts.ci restore --config "$PROJECT_CONFIG" "${args[@]}" --artifacts .cache/collected
           uv run --no-sync python -m scripts.run merge --config "$PROJECT_CONFIG" "${args[@]}"
-          uv run --no-sync python -m scripts.run check --config "$PROJECT_CONFIG" "${args[@]}"
+          if [ "$CHECK_EXISTING" = 'true' ]; then
+            uv run --no-sync python -m scripts.run check --config "$PROJECT_CONFIG" "${args[@]}"
+          fi
           uv run --no-sync python -m scripts.run summary --config "$PROJECT_CONFIG" "${args[@]}" --output "$GITHUB_STEP_SUMMARY"
           uv run --no-sync python -m scripts.ci stage --config "$PROJECT_CONFIG" "${args[@]}"
       - name: Commit a single multilingual update

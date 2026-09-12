@@ -122,6 +122,7 @@ def main() -> None:
                     "matrix": json.dumps(value),
                     "project": project.id,
                     "sources": workspace_path(project.sources),
+                    "source_bundle": workspace_path(project.source_bundle),
                     "catalog": workspace_path(project.catalog),
                     "catalog_dir": workspace_path(project.catalog.parent),
                 },

@@ -23,7 +23,9 @@ npm run workflow -- merge
 npm run workflow -- check
 ```
 
-日常完整更新运行 `npm run workflow -- update`。它会获取原文，为所选语言翻译增量内容，全部成功后合并到工作区。
+日常更新运行 `npm run workflow -- update`：只获取缺少译文文件的剧情，并从中提取 names；masterdata 每次按表和字段比对原文值，补齐没有译文的键。没有待补内容时不生成翻译任务，也不重建 manifest。
+
+已有剧情的漏译和原文变化通过 `update --check-existing` 完整检查，可加 `--dry-run` 先查看待办。不同译法和旧输出列入 `prepare-report.json`，保留已有译文；缺失位置的复用译法有歧义时，报告为阻塞条目，需人工处理。
 
 ## 配置与选择范围
 
@@ -34,7 +36,7 @@ npm run workflow -- check
 - 目标可指定 `translations`、`glossary`、`state`、`work` 路径，以及 `style` 风格文件和 `rules` 校验规则。
 - 后端的 `codex.effort` 指定推理强度；`codex.context_window` 指定 token 预算，需与所选模型容量匹配。
 
-`--limit` 仅用于 `prepare` 和 `update`，限制每种语言的计划条目数；`translate` 执行已有计划。`--dry-run` 只获取和规划，不调用模型。各命令参数可用 `--help` 查看，例如 `npm run workflow -- update --help`。
+`--limit` 仅用于 `prepare` 和 `update`，限制每种语言的计划条目数。新剧情必须整份纳入计划，额度不足时需提高上限，避免发布半份文件。`translate` 执行已有计划；`--dry-run` 只获取和规划，不调用模型。各命令参数可用 `--help` 查看，例如 `npm run workflow -- update --help`。
 
 ## 维护与恢复
 
@@ -54,7 +56,7 @@ Husky 会在提交前根据暂存的配置和译文构建 manifest。`check` 检
 
 ## GitHub Actions
 
-在仓库 Secrets 中添加后端 `api_key_env` 对应的密钥，然后运行 [Update Translations](.github/workflows/update_translation.yml)。手动运行默认只规划；定时任务每天北京时间 13:30 更新并提交译文。
+在仓库 Secrets 中添加后端 `api_key_env` 对应的密钥，然后运行 [Update Translations](.github/workflows/update_translation.yml)。手动运行默认只规划，可勾选 `check_existing` 完整检查；每天北京时间 13:30 自动更新，周日同时完整检查。
 
 可通过运行参数选择配置、语言、后端、模型和条目上限，也可设置 `TRANSLATION_BACKEND`、`TRANSLATION_MODEL`、`TRANSLATION_LIMIT` 仓库变量。所有所选语言成功后才统一发布。跨仓库调用可使用 `workflow_call` 和 `secrets: inherit`。
 

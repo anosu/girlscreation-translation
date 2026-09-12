@@ -1,7 +1,10 @@
 """Plan one target from a shared source catalog and its current publication."""
 
 import hashlib
+import io
+import json
 import os
+import zipfile
 from pathlib import Path
 
 from scripts.adapters import load_adapter
@@ -15,7 +18,7 @@ from scripts.glossary import (
     term_for,
 )
 from scripts.models import Catalog, CompiledCatalog, Plan, TermBinding, read_state
-from scripts.utils import digest, directory_digest, read_json, write_json
+from scripts.utils import digest, directory_digest, read_json, write_bytes, write_json
 from scripts.validate import combine_rules
 
 
@@ -38,6 +41,14 @@ def output_paths(document: dict, prefix: tuple = ()):
             yield from output_paths(value, (*prefix, key))
         else:
             yield (*prefix, key)
+
+
+def published_files(root: Path) -> list[str]:
+    return sorted(
+        p.relative_to(root).as_posix()
+        for p in root.rglob("*.json")
+        if p.name != "manifest.json"
+    )
 
 
 def bind_runtime(work: Path, project: Project, target: Target) -> None:
@@ -80,6 +91,16 @@ def read_plan(work: Path) -> Plan:
 
 
 def catalog_inputs(project: Project) -> str:
+    def fingerprint(path: Path) -> str:
+        if path.suffix == ".json":
+            return digest(read_json(path))
+        content = (
+            path.read_text(encoding="utf-8").encode("utf-8")
+            if path.suffix == ".py"
+            else path.read_bytes()
+        )
+        return hashlib.sha256(content).hexdigest()
+
     adapter = load_adapter(project.adapter)
     files = {"adapter": Path(getattr(adapter, "__file__"))}
     for key, value in adapter.settings(project.options).items():
@@ -89,44 +110,124 @@ def catalog_inputs(project: Project) -> str:
         {
             "adapter": project.adapter,
             "options": project.options,
-            "files": {
-                key: hashlib.sha256(path.read_bytes()).hexdigest()
-                for key, path in files.items()
-            },
+            "files": {key: fingerprint(path) for key, path in files.items()},
         }
     )
 
 
-def source_catalog(project: Project, compiled: Path | None = None) -> Catalog:
+def source_catalog(
+    project: Project,
+    compiled: Path | None = None,
+    *,
+    targets: list[Target] | None = None,
+    check_existing: bool = False,
+) -> Catalog:
     if (project.sources / ".fetching").exists():
         raise ValueError(
             "Source fetch was interrupted; rerun fetch before preparing tasks"
         )
     adapter = load_adapter(project.adapter)
-    version = directory_digest(project.sources)
+    targets = targets if targets is not None else project.select()
+    files = {
+        target.code: digest(published_files(target.translations)) for target in targets
+    }
+    inputs = catalog_inputs(project)
     if compiled is not None:
         artifact = CompiledCatalog.model_validate(read_json(compiled))
         if (
             artifact.project != project.id
-            or artifact.inputs != catalog_inputs(project)
-            or artifact.catalog.source_version != version
+            or artifact.inputs != inputs
+            or artifact.catalog.source_version
+            != directory_digest(project.sources, artifact.catalog.source_files)
+            or artifact.catalog.check_existing != check_existing
+            or any(
+                artifact.catalog.target_files.get(code) != fingerprint
+                for code, fingerprint in files.items()
+            )
         ):
             raise ValueError("Shared catalog is stale; run catalog again")
         return artifact.catalog
     options = {**adapter.settings(project.options), "root": str(project.root)}
-    catalog = adapter.extract(project.sources, options)
-    catalog.source_version = version
+    catalog = adapter.extract(
+        project.sources,
+        options,
+        translations=[target.translations for target in targets],
+        check_existing=check_existing,
+    )
+    catalog.check_existing = check_existing
+    catalog.target_files = files
+    catalog.source_version = directory_digest(project.sources, catalog.source_files)
     return catalog
 
 
-def compile_catalog(project: Project) -> Catalog:
-    catalog = source_catalog(project)
-    write_json(
+def select_tasks(
+    tasks: list[dict],
+    limit: int | None,
+    atomic_files: set[str],
+    blocked_files: set[str],
+) -> list[dict]:
+    """Keep new files complete, including tasks shared by more than one file."""
+    by_file: dict[str, set[int]] = {file: set() for file in atomic_files}
+    for number, task in enumerate(tasks):
+        for binding in task["targets"]:
+            if binding["file"] in by_file:
+                by_file[binding["file"]].add(number)
+    pending = set(range(len(tasks)))
+    chosen: set[int] = set()
+    required_sizes = []
+    for number in range(len(tasks)):
+        if number not in pending:
+            continue
+        group, stack = set(), [number]
+        files = set()
+        while stack:
+            current = stack.pop()
+            if current in group:
+                continue
+            group.add(current)
+            for binding in tasks[current]["targets"]:
+                file = binding["file"]
+                if file in by_file:
+                    files.add(file)
+                    stack.extend(by_file[file] - group)
+        pending -= group
+        if files & blocked_files:
+            blocked_files.update(files)
+            continue
+        required_sizes.append(len(group))
+        if limit is None or len(chosen) + len(group) <= limit:
+            chosen.update(group)
+    if not chosen and required_sizes and limit is not None:
+        raise ValueError(
+            f"Task limit {limit} cannot fit a complete new file; use at least {min(required_sizes)} or omit --limit"
+        )
+    return [task for number, task in enumerate(tasks) if number in chosen]
+
+
+def compile_catalog(
+    project: Project,
+    *,
+    targets: list[Target] | None = None,
+    check_existing: bool = False,
+    export: bool = False,
+) -> Catalog:
+    catalog = source_catalog(project, targets=targets, check_existing=check_existing)
+    write_bytes(
         project.catalog,
-        CompiledCatalog(
-            project=project.id, inputs=catalog_inputs(project), catalog=catalog
-        ).model_dump(),
+        json.dumps(
+            CompiledCatalog(
+                project=project.id, inputs=catalog_inputs(project), catalog=catalog
+            ).model_dump(exclude_defaults=True),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8"),
     )
+    if export:
+        archive = io.BytesIO()
+        with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+            for file in catalog.source_files or []:
+                bundle.write(project.sources / file, file)
+        write_bytes(project.source_bundle, archive.getvalue())
     return catalog
 
 
@@ -135,21 +236,34 @@ def prepare_tasks(
     target: Target,
     catalog: Catalog | None = None,
     limit: int | None = None,
+    *,
+    check_existing: bool = False,
 ) -> Plan:
     """Preserve published text, select missing/revised entries, and plan terms first."""
     if limit is not None and limit <= 0:
         raise ValueError("Task limit must be greater than zero")
     old_plan = target.work / "plan.json"
-    if old_plan.exists() and read_json(old_plan).get("version") != 5:
+    if old_plan.exists() and read_json(old_plan).get("version") != 6:
         raise ValueError(
             "This work directory contains legacy artifacts; configure a new work directory. The old cache has been preserved."
         )
     adapter = load_adapter(project.adapter)
     options = adapter.settings(project.options)
     catalog = adapter.publication(
-        catalog or source_catalog(project), target.translations, options
+        catalog
+        or source_catalog(project, targets=[target], check_existing=check_existing),
+        target.translations,
+        options,
     )
     state = read_state(target.state)
+    if catalog.target_files and catalog.target_files.get(target.code) != digest(
+        published_files(target.translations)
+    ):
+        raise ValueError(
+            "Shared catalog was prepared for another target or publication file set"
+        )
+    if catalog.check_existing != check_existing and catalog.target_files:
+        raise ValueError("Shared catalog uses a different check-existing mode")
     identity = {
         "project": project.id,
         "language": target.code,
@@ -188,6 +302,13 @@ def prepare_tasks(
     )
     glossary = resolve_glossary(target.glossary, names, terms)
     tasks, claims = [], {}
+    conflicts = []
+    atomic_files = {
+        file
+        for file in catalog.atomic_files
+        if not (target.translations / file).exists()
+    }
+    blocked_files: set[str] = set()
     for entry in catalog.entries:
         bindings = []
         source_revision = digest([project.source_language, entry.source])
@@ -213,18 +334,41 @@ def prepare_tasks(
         )
         reuse = None
         if entry.reconcile:
+            if not check_existing and all(valid(b) for b in bindings):
+                continue
             populated = [b for b in bindings if valid(b)]
             if populated:
                 priority = max(b["priority"] for b in populated)
                 values = {b["before"] for b in populated if b["priority"] == priority}
-                if len(values) != 1:
-                    raise ValueError(
-                        f"Conflicting equal-priority outputs for {entry.id}: {values}"
+                if len({b["before"] for b in populated}) > 1:
+                    conflicts.append(
+                        {
+                            "entry_id": entry.id,
+                            "source": entry.source,
+                            "outputs": [
+                                {
+                                    "file": b["file"],
+                                    "path": b["path"],
+                                    "translation": b["before"],
+                                    "priority": b["priority"],
+                                }
+                                for b in populated
+                            ],
+                            "missing_outputs": sum(not valid(b) for b in bindings),
+                            "blocked": len(values) > 1
+                            and any(not valid(b) for b in bindings),
+                        }
                     )
+                if len(values) != 1:
+                    blocked_files.update(
+                        b["file"]
+                        for b in bindings
+                        if b["file"] in atomic_files and not valid(b)
+                    )
+                    continue
                 reuse = next(iter(values))
-            if reuse is not None and all(
-                valid(b) and b["before"] == reuse for b in bindings
-            ):
+            bindings = [b for b in bindings if not valid(b)]
+            if not bindings:
                 continue
             reason = "linked_outputs"
         else:
@@ -272,11 +416,10 @@ def prepare_tasks(
         )
     tasks.sort(key=lambda task: not task["term"])
     available = len(tasks)
-    if limit is not None:
-        tasks = tasks[:limit]
+    tasks = select_tasks(tasks, limit, atomic_files, blocked_files)
     plan = Plan.model_validate(
         {
-            "version": 5,
+            "version": 6,
             "id": "pending",
             **identity,
             "project_name": project.name,
@@ -286,13 +429,11 @@ def prepare_tasks(
             "rules": target.rules,
             "style": target.style,
             "source_version": catalog.source_version,
+            "source_files": catalog.source_files,
+            "check_existing": check_existing,
             "source_state_before": digest(state),
             "term_bindings": term_bindings,
-            "published_files": sorted(
-                p.relative_to(target.translations).as_posix()
-                for p in target.translations.rglob("*.json")
-                if p.name != "manifest.json"
-            ),
+            "published_files": published_files(target.translations),
             "tasks": tasks,
         }
     )
@@ -303,11 +444,15 @@ def prepare_tasks(
         "plan": plan.id,
         **identity,
         "tasks": len(tasks),
+        "source_files": catalog.source_files,
+        "blocked_files": sorted(blocked_files),
+        "existing_variants": conflicts,
+        "blocked_entries": sum(item["blocked"] for item in conflicts),
         "source_scope": "complete" if catalog.complete else "partial",
         "unmapped_outputs": [
             {"file": file, "path": list(keys)}
             for file in plan.published_files
-            if catalog.complete
+            if check_existing and catalog.complete
             for keys in output_paths(document(file))
             if (file, keys) not in claims
         ],
@@ -328,6 +473,7 @@ def prepare_tasks(
     write_json(target.work / "prepare-report.json", report)
     print(
         f"{target.code}: selected {len(tasks)}/{available} tasks; {report['reuse_candidates']} reuse candidates; "
+        f"{report['blocked_entries']} entries blocked by ambiguous translations; "
         f"{len(report['review_outputs'])} files to review. Report: {target.work / 'prepare-report.json'}",
         flush=True,
     )

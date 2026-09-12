@@ -113,8 +113,8 @@ def run_summary(project: Project, targets: list[Target]) -> str:
     lines = [
         f"# Translation update: {project.name}",
         "",
-        "| Target | Selected / available | Reuse candidates | Completed | Remaining | Review files |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "| Target | Selected / available | Reuse candidates | Completed | Remaining | Blocked entries | Review files |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     for target in targets:
         report_path = target.work / "prepare-report.json"
@@ -126,8 +126,16 @@ def run_summary(project: Project, targets: list[Target]) -> str:
             else report.get("review_outputs", progress["review_outputs"])
         )
         lines.append(
-            f"| {target.code} | {report.get('tasks', 0)} / {report.get('available_tasks', 0)} | {report.get('reuse_candidates', 0)} | {progress.get('completed', 0)} | {progress.get('remaining', '?')} | {len(review_files)} |"
+            f"| {target.code} | {report.get('tasks', 0)} / {report.get('available_tasks', 0)} | {report.get('reuse_candidates', 0)} | {progress.get('completed', 0)} | {progress.get('remaining', '?')} | {report.get('blocked_entries', 0)} | {len(review_files)} |"
         )
+        if report.get("existing_variants"):
+            lines.extend(
+                [
+                    "",
+                    f"{target.code}: {len(report['existing_variants'])} source entries have different existing translations; preserved and listed in prepare-report.json.",
+                    "",
+                ]
+            )
         if progress.get("reason"):
             lines.extend(["", f"{target.code}: {progress['reason']}"])
     lines.extend(

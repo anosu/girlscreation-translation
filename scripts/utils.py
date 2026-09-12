@@ -17,10 +17,13 @@ def digest(value: Any) -> str:
     ).hexdigest()
 
 
-def directory_digest(root: Path) -> str:
+def directory_digest(root: Path, files: list[str] | None = None) -> str:
     """Fingerprint source artifacts with relative paths so snapshots remain portable."""
     values = {}
-    for path in sorted(root.rglob("*.json")):
+    paths = root.rglob("*.json") if files is None else (root / name for name in files)
+    for path in sorted(paths):
+        if not path.resolve().is_relative_to(root.resolve()):
+            raise ValueError(f"Source path escapes cache: {path}")
         with path.open("rb") as stream:
             values[path.relative_to(root).as_posix()] = hashlib.file_digest(
                 stream, "sha256"

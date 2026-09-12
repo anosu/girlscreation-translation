@@ -13,10 +13,23 @@ class GameAdapter(Protocol):
     def settings(self, options: dict) -> dict: ...
 
     def fetch(
-        self, cache: Path, selection: list[str] | None, options: dict
+        self,
+        cache: Path,
+        selection: list[str] | None,
+        options: dict,
+        *,
+        translations: list[Path] | None = None,
+        check_existing: bool = False,
     ) -> dict: ...
 
-    def extract(self, cache: Path, options: dict) -> Catalog: ...
+    def extract(
+        self,
+        cache: Path,
+        options: dict,
+        *,
+        translations: list[Path] | None = None,
+        check_existing: bool = False,
+    ) -> Catalog: ...
 
     def publication(
         self, catalog: Catalog, translations: Path, options: dict

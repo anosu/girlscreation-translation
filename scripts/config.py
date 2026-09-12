@@ -158,6 +158,10 @@ class Project:
     def catalog(self) -> Path:
         return self.sources.parent / f"{self.sources.name}.catalog.json"
 
+    @property
+    def source_bundle(self) -> Path:
+        return self.sources.parent / f"{self.sources.name}.zip"
+
     def select(self, codes: list[str] | None = None) -> list[Target]:
         selected = (
             list(self.targets)
@@ -266,7 +270,7 @@ def load_project(path: Path = DEFAULT_CONFIG) -> Project:
             values.name or code,
             values.backend,
             resolve(values.translations or f"translations/{code}"),
-            resolve(values.work or f".cache/translation/{settings.id}/work-v5/{code}"),
+            resolve(values.work or f".cache/translation/{settings.id}/work-v6/{code}"),
             resolve(values.glossary or f"glossary/{code}.json"),
             resolve(values.style).read_text(encoding="utf-8")
             if values.style
@@ -275,7 +279,11 @@ def load_project(path: Path = DEFAULT_CONFIG) -> Project:
             resolve(values.state or f"translation-state/{settings.id}/{code}.json"),
         )
     sources = resolve(settings.sources or f".cache/translation/{settings.id}/sources")
-    occupied = [("project.sources", sources)]
+    occupied = [
+        ("project.sources", sources),
+        ("project.catalog", sources.parent / f"{sources.name}.catalog.json"),
+        ("project.source_bundle", sources.parent / f"{sources.name}.zip"),
+    ]
     for code, target in targets.items():
         for role in ("translations", "work", "glossary", "state"):
             location = getattr(target, role)

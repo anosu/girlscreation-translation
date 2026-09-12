@@ -1,6 +1,5 @@
 """Portable adapter for games exporting normalized source entries as JSON."""
 
-import hashlib
 from pathlib import Path
 
 from scripts.config import StrictModel, Text
@@ -32,7 +31,14 @@ def group_path(cache: Path, group: str) -> Path:
     return cache / "groups" / f"{digest(group)}.json"
 
 
-def fetch(cache: Path, selection: list[str] | None, options: dict) -> dict:
+def fetch(
+    cache: Path,
+    selection: list[str] | None,
+    options: dict,
+    *,
+    translations: list[Path] | None = None,
+    check_existing: bool = False,
+) -> dict:
     """Import a local source export without requiring UnityPy or a game server."""
     path = Path(options["root"]) / options["input"]
     entries = read_json(path)
@@ -50,7 +56,7 @@ def fetch(cache: Path, selection: list[str] | None, options: dict) -> dict:
         write_json(group_path(cache, group), context_entries(items))
     index = {
         "version": 1,
-        "hash": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "hash": digest(entries),
         "entries": len(entries),
         "partial": bool(selection),
     }
@@ -59,7 +65,13 @@ def fetch(cache: Path, selection: list[str] | None, options: dict) -> dict:
     return index
 
 
-def extract(cache: Path, options: dict) -> Catalog:
+def extract(
+    cache: Path,
+    options: dict,
+    *,
+    translations: list[Path] | None = None,
+    check_existing: bool = False,
+) -> Catalog:
     """Return normalized entries, including their arbitrary JSON publication keys."""
     entries = read_json(cache / "entries.json")
     groups = {}
@@ -80,6 +92,14 @@ def extract(cache: Path, options: dict) -> Catalog:
                     "context_version": versions[entry["group"]],
                 }
                 for entry in entries
+            ],
+            "source_files": [
+                "index.json",
+                "entries.json",
+                *[
+                    group_path(cache, group).relative_to(cache).as_posix()
+                    for group in groups
+                ],
             ],
         }
     )

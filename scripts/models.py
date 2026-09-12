@@ -67,6 +67,10 @@ class Catalog(StrictModel):
     complete: bool = True
     entries: list[Entry]
     term_bindings: list[TermBinding] = Field(default_factory=list)
+    source_files: list[str] | None = None
+    target_files: dict[str, Text] = Field(default_factory=dict)
+    atomic_files: list[str] = Field(default_factory=list)
+    check_existing: bool = False
 
     @model_validator(mode="after")
     def unique_ids(self):
@@ -105,7 +109,7 @@ class Task(StrictModel):
 
 
 class Plan(StrictModel):
-    version: Literal[5]
+    version: Literal[6]
     id: Text
     project: Text
     project_name: Text
@@ -118,6 +122,8 @@ class Plan(StrictModel):
     style: str
     source_state_before: Text
     source_version: Text
+    source_files: list[str] | None = None
+    check_existing: bool = False
     term_bindings: list[TermBinding]
     published_files: list[str] = Field(default_factory=list)
     tasks: list[Task]
@@ -159,7 +165,7 @@ type TermIndex = dict[str, list[ResolvedTerm]]
 
 
 class Results(Submission):
-    version: Literal[5]
+    version: Literal[6]
     plan: Text
     project: Text
     language: Text
@@ -171,7 +177,7 @@ class Results(Submission):
     @model_validator(mode="before")
     @classmethod
     def discard_unused_fingerprint(cls, value):
-        """Read existing v5 results without preserving a field merge no longer uses."""
+        """Discard the retired fingerprint; merge validates the projected terminology."""
         if isinstance(value, dict) and "published_terms_before" in value:
             return {
                 key: item
