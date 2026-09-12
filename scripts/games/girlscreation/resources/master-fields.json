@@ -1,0 +1,229 @@
+{
+    "mActionPatterns": {
+        "name": "string"
+    },
+    "mActiveSkills": {
+        "ml_name1": "array",
+        "ml_name2": "array",
+        "ml_description": "array"
+    },
+    "mActiveSkillSideEffectFilters": {
+        "ml_name": "array"
+    },
+    "mArtPieces": {
+        "ml_name": "array",
+        "ml_description": "array"
+    },
+    "mAthenesRecordAreas": {
+        "ml_name": "strings",
+        "name": "string"
+    },
+    "mCurrencies": {
+        "ml_name": "array",
+        "ml_description": "array"
+    },
+    "mEquipments": {
+        "ml_name": "array",
+        "ml_flavor_text": "array"
+    },
+    "mEvents": {
+        "ml_title": "array"
+    },
+    "mEventTutorialPopupDescriptions": {
+        "ml_description": "array"
+    },
+    "mEventTutorialPopups": {
+        "ml_title": "array"
+    },
+    "mFactors": {
+        "ml_name": "array",
+        "ml_description": "array"
+    },
+    "mGachaAppeal": {
+        "ml_ex_appeal_text": "array"
+    },
+    "mGachaCampaignMessages": {
+        "message": "string",
+        "ml_message": "strings"
+    },
+    "mGachaMileages": {
+        "ml_name": "array"
+    },
+    "mGachaNotes": {
+        "note": "string"
+    },
+    "mGachas": {
+        "button_top_notice": "string"
+    },
+    "mHomeLayouts": {
+        "name": "string",
+        "ml_name": "array"
+    },
+    "mInspirations": {
+        "ml_name": "array",
+        "ml_flavor_text": "array"
+    },
+    "mIntermissionNovels": {
+        "ml_title": "array"
+    },
+    "mItems": {
+        "ml_name": "array",
+        "ml_description": "array",
+        "ml_flavor_text": "array"
+    },
+    "mLayers": {
+        "ml_name": "array",
+        "ml_flavor_text": "array",
+        "ml_illustrator_name": "array",
+        "ml_rare_get_message": "array",
+        "ml_get_message": "array"
+    },
+    "mMemories": {
+        "ml_name": "array"
+    },
+    "mNaviCharacterProfileWords": {
+        "ml_word": "array"
+    },
+    "mNovelKeyWords": {
+        "ml_keyword": "array",
+        "ml_description": "array"
+    },
+    "mNovels": {
+        "title": "string",
+        "ml_title": "array"
+    },
+    "mPassiveSkills": {
+        "ml_name": "array",
+        "ml_description": "array"
+    },
+    "mPassiveSkillTriggers": {
+        "description": "string"
+    },
+    "mProfileDecorations": {
+        "ml_name": "array",
+        "ml_description": "array",
+        "ml_flavor_text": "array"
+    },
+    "mQuestAreas": {
+        "ml_name": "array"
+    },
+    "mQuestEvaluates": {
+        "ml_description": "array"
+    },
+    "mQuestHints": {
+        "ml_title": "array",
+        "ml_button_text": "array",
+        "ml_description": "array"
+    },
+    "mQuestObjects": {
+        "name": "string",
+        "flavor_text": "string"
+    },
+    "mQuests": {
+        "ml_name": "array"
+    },
+    "mQuestStages": {
+        "ml_name": "array"
+    },
+    "mRaidEventBosses": {
+        "name": "string"
+    },
+    "mRaidEventLiveMessages": {
+        "message": "string"
+    },
+    "mRaidEventSupportMessages": {
+        "message": "string",
+        "ml_message": "array"
+    },
+    "mShopCategories": {
+        "ml_name": "array"
+    },
+    "mShopTabs": {
+        "ml_name": "array"
+    },
+    "mSkillEffectVisualConfigs": {
+        "ml_name": "array"
+    },
+    "mSubunits": {
+        "ml_name": "array",
+        "ml_personality": "array",
+        "ml_flavor_text": "array",
+        "ml_roots": "array",
+        "ml_get_message": "array"
+    },
+    "mSubunitWords": {
+        "ml_word": "array"
+    },
+    "mTargetTypes": {
+        "description": "string"
+    },
+    "mTextConfig": {
+        "ml_value": "array"
+    },
+    "mTinyHelps": {
+        "ml_text": "array"
+    },
+    "mTribes": {
+        "ml_name": "array"
+    },
+    "mTutorialPopupDescriptions": {
+        "ml_title": "array",
+        "ml_description": "array"
+    },
+    "mUnitProfiles": {
+        "ml_title": "array",
+        "ml_content": "array"
+    },
+    "mUnits": {
+        "ml_name": "array",
+        "ml_flavor_text": "array"
+    },
+    "mUnitWords": {
+        "ml_word": "array",
+        "ml_title": "array"
+    },
+    "mVirtueEffects": {
+        "ml_name": "array"
+    },
+    "slim_mBoxGachaGroups": {
+        "ml_name": "array"
+    },
+    "slim_mGachaGroups": {
+        "ml_name": "array",
+        "ml_description": "array",
+        "ml_top_notice": "array",
+        "ml_stepup_count_text": "array"
+    },
+    "slim_mLoadingTips": {
+        "ml_title": "array",
+        "ml_desc": "array"
+    },
+    "slim_mLoginBonusCharacterActions": {
+        "ml_word": "array"
+    },
+    "slim_mLoginBonuses": {
+        "ml_name": "array"
+    },
+    "slim_mMissions": {
+        "ml_title": "array",
+        "ml_description": "array",
+        "ml_hint": "array"
+    },
+    "slim_mMissionTypes": {
+        "ml_type_name": "array"
+    },
+    "slim_mMuseumBlocks": {
+        "ml_name": "array",
+        "ml_open_message": "array"
+    },
+    "slim_mNaviCharacterBoxGachaWords": {
+        "ml_word": "array"
+    },
+    "slim_mNaviCharacterSpMissionWords": {
+        "ml_word": "array"
+    },
+    "slim_mShopProducts": {
+        "ml_name": "array",
+        "ml_description": "array"
+    }
+}

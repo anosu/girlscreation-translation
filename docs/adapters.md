@@ -1,0 +1,65 @@
+# 接入游戏适配器
+
+已有提取程序可输出规范化 JSON，交给 `scripts.games.json_file`。完整示例见 [examples/portable](../examples/portable/translation.toml)；需要直接读取游戏资源时，实现下面的模块接口，并将模块名写入 `project.adapter`。
+
+## JSON 输入
+
+`[adapter].input` 指向条目数组文件：
+
+```json
+[
+    {
+        "id": "chapter-1/line-1",
+        "category": "dialogue",
+        "group": "chapter 1 / arrival",
+        "source": "Welcome, {player}!",
+        "targets": [{"file": "scenes/arrival.json", "path": ["line-1"]}],
+        "context": {"speaker": "Rook", "line": 1},
+        "rules": {"protected_patterns": ["\\{[^{}]+\\}"]}
+    }
+]
+```
+
+| 字段 | 约定 |
+| --- | --- |
+| `id` | 项目内唯一且稳定；固定 ID 的原文修订不改变它，同文异境可使用不同 ID。 |
+| `category` / `group` | 文本用途 / 上下文组。 |
+| `source` / `context` | 非空白原文 / 上下文对象或数组。 |
+| `targets` | 发布位置列表。file 是交付目录内的相对 JSON 路径，path 是对象键序列；禁止目录逃逸、隐藏文件和 manifest。 |
+| `targets[].track_source` | 默认为 true，核对固定 ID 对应的原文版本；能从客户端键恢复来源关系时才设为 false。 |
+| `term` | 默认为 false；为 true 时先翻译该条目，并将其声明为标准术语来源。 |
+| `use_terms` | 默认为 false；为 true 时允许精确命中术语复用，并要求结果遵守该译法。 |
+| `reconcile` | 默认为 false；为 true 时统一同条目的多个位置，按 `targets[].priority` 选择已有译文，数值越大越优先，同级冲突报错。 |
+| `rules` | 格式约束，例如 `protected_patterns`、`preserve_tags`、`preserve_newlines`。 |
+
+JSON 适配器自动生成上下文版本和引用。完整字段与校验规则以 [models.py](../scripts/models.py) 和 [Rules](../scripts/config.py) 为准。
+
+## 自定义模块
+
+| 接口 | 返回值与职责 |
+| --- | --- |
+| `settings(options)` | 返回校验、规范化后的适配器设置。 |
+| `fetch(cache, selection, options)` | 获取快照，返回概要；获取期间保留 `.fetching`，全部成功后移除。 |
+| `extract(cache, options)` | 返回共享 Catalog；部分获取时 `complete=false`。 |
+| `publication(catalog, translations, options)` | 返回当前语言的独立 Catalog，补充发布映射和术语声明。 |
+| `context(task, cache, options)` | 返回指定条目的完整场景或相关记录。 |
+
+`fetch`、`extract` 的 options 包含配置目录 `root`。共享提取不读取目标译文；publication 不修改传入的 Catalog 或发布文件。
+
+自定义条目需提供 `context_version` 和 `references`：版本覆盖翻译所需资料，引用使用快照内的相对路径。上下文变化必须更新版本，发布地址不应影响该版本。
+
+## 术语来源
+
+通过 `Catalog.term_bindings` 声明标准译名的位置，供术语表引用：
+
+```json
+{
+    "source": "Rook",
+    "reference": "character-rook",
+    "target": {"file": "characters.json", "path": ["rook"]}
+}
+```
+
+`reference` 是可选的标准名称标识。已有声明会写入持久状态；`publication` 也须接受空 Catalog，供没有原文快照的交付检查使用。
+
+适配器测试应覆盖原文修订、同文异境、多位置冲突、完整上下文、部分获取和格式约束。可参考 [test_framework.py](../tests/test_framework.py)。

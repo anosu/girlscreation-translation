@@ -1,83 +1,260 @@
-name: Update Translation
+name: Update Translations
 
 on:
   workflow_dispatch:
+    inputs:
+      config:
+        description: Project configuration
+        type: string
+        default: translation.toml
+      targets:
+        description: Comma-separated target locales (empty uses all declared targets)
+        type: string
+        default: ''
+      backend:
+        description: Backend profile override (empty uses language settings)
+        type: string
+        default: ''
+      model:
+        description: Model override
+        type: string
+        default: ''
+      dry_run:
+        description: Prepare tasks without model calls or publication
+        type: boolean
+        default: true
+      limit:
+        description: Maximum tasks per language (0 means all)
+        type: string
+        default: '0'
+  workflow_call:
+    inputs:
+      config:
+        type: string
+        default: translation.toml
+      targets:
+        type: string
+        default: ''
+      backend:
+        type: string
+        default: ''
+      model:
+        type: string
+        default: ''
+      dry_run:
+        type: boolean
+        default: true
+      limit:
+        type: string
+        default: '0'
   schedule:
     - cron: '30 5 * * *'
 
+permissions:
+  contents: read
+
+concurrency:
+  group: translation-${{ inputs.config || 'translation.toml' }}
+  cancel-in-progress: false
+
+env:
+  HUSKY: '0'
+  PROJECT_CONFIG: ${{ inputs.config || 'translation.toml' }}
+  TARGET_LANGUAGES: ${{ inputs.targets || '' }}
+  TRANSLATION_BACKEND: ${{ inputs.backend || vars.TRANSLATION_BACKEND || '' }}
+  TRANSLATION_MODEL: ${{ inputs.model || vars.TRANSLATION_MODEL || '' }}
+  TASK_LIMIT: ${{ inputs.limit || vars.TRANSLATION_LIMIT || '0' }}
+
 jobs:
-  update-translation:
+  sources:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 60
+    outputs:
+      matrix: ${{ steps.meta.outputs.matrix }}
+      project: ${{ steps.meta.outputs.project }}
+      sources: ${{ steps.meta.outputs.sources }}
+      catalog: ${{ steps.meta.outputs.catalog }}
+      catalog_dir: ${{ steps.meta.outputs.catalog_dir }}
     steps:
-      - name: Record time
-        run: date '+%Y-%m-%d %H:%M:%S'
-
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Fetch GalTransl
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git clone https://github.com/anosu/GalTransl.git
-
-      - name: Setup python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
         with:
-          python-version: '3.12'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r scripts/requirements.txt
-          pip install -r GalTransl/requirements.txt
-
-      - name: Update original files
-        run: python scripts/run.py ${{ secrets.GALTRANSL_TOKEN }} ${{ vars.GALTRANSL_ENDPOINT }} ${{ vars.GALTRANSL_MODEL_NAME }}
-
-      - name: Check input files
-        id: check
-        run: |
-          DIR="GalTransl/sampleProject/gt_input"
-          if [ ! -d "$DIR" ] || [ -z "$(ls -A "$DIR")" ]; then
-            echo "No update"
-            echo "update=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "update=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Copy project dictionary
-        if: steps.check.outputs.update == 'true'
-        run: cp 项目GPT字典.txt GalTransl/sampleProject/项目GPT字典.txt
-
-      - name: Run GalTransl
-        if: steps.check.outputs.update == 'true'
-        run: python main.py ${{ secrets.GALTRANSL_TOKEN }} ${{ vars.GALTRANSL_ENDPOINT }} ${{ vars.GALTRANSL_MODEL_NAME }}
-        working-directory: ./GalTransl
-
-      - name: Merge translated files
-        if: steps.check.outputs.update == 'true'
-        run: python scripts/merge.py
-
-      - name: Build manifest
-        if: steps.check.outputs.update == 'true'
-        run: python scripts/build.py
-
-      - name: Commit
-        id: commit
-        run: |
-          git add .
-          if git diff-index --quiet HEAD --; then
-            echo "No changes to commit."
-            echo "diff=false" >> "$GITHUB_OUTPUT"
-          else
-            git commit -m "Auto-update translation"
-            echo "diff=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Push
-        if: steps.commit.outputs.diff == 'true'
-        uses: ad-m/github-push-action@master
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.1.0
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          enable-cache: true
+      - run: uv sync --frozen --all-extras --python 3.14
+      - name: Read project and language matrix
+        id: meta
+        run: |
+          args=()
+          if [ -n "$TARGET_LANGUAGES" ]; then args+=(--target "$TARGET_LANGUAGES"); fi
+          uv run --no-sync python -m scripts.ci matrix --config "$PROJECT_CONFIG" "${args[@]}" --github-output "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v6
+        id: cache
+        with:
+          path: ${{ steps.meta.outputs.sources }}
+          key: sources-v3-${{ steps.meta.outputs.project }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: sources-v3-${{ steps.meta.outputs.project }}-
+      - name: Fetch shared original data once
+        run: |
+          uv run --no-sync python -m scripts.run fetch --config "$PROJECT_CONFIG"
+          uv run --no-sync python -m scripts.run catalog --config "$PROJECT_CONFIG"
+      - uses: actions/cache/save@v6
+        if: always() && steps.cache.outcome == 'success'
+        with:
+          path: ${{ steps.meta.outputs.sources }}
+          key: sources-v3-${{ steps.meta.outputs.project }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: original-sources
+          path: ${{ steps.meta.outputs.sources }}
+          retention-days: 7
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: source-catalog
+          path: ${{ steps.meta.outputs.catalog }}
+          retention-days: 7
+
+  translate:
+    needs: sources
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.sources.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      TARGET_LANGUAGE: ${{ matrix.language }}
+      WORK_DIR: ${{ matrix.work }}
+      BACKEND: ${{ matrix.backend }}
+      MODEL: ${{ matrix.model }}
+      SOURCE_CATALOG: ${{ needs.sources.outputs.catalog }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --all-extras --python 3.14
+      - uses: actions/download-artifact@v8
+        with:
+          name: original-sources
+          path: ${{ needs.sources.outputs.sources }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: source-catalog
+          path: ${{ needs.sources.outputs.catalog_dir }}
+      - uses: actions/cache/restore@v6
+        id: cache
+        with:
+          path: ${{ matrix.work }}
+          key: agent-v5-${{ needs.sources.outputs.project }}-${{ matrix.language }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: agent-v5-${{ needs.sources.outputs.project }}-${{ matrix.language }}-
+      - name: Prepare isolated language queue
+        id: queue
+        run: |
+          args=()
+          if [ "$TASK_LIMIT" != '0' ]; then args+=(--limit "$TASK_LIMIT"); fi
+          uv run --no-sync python -m scripts.run prepare --config "$PROJECT_CONFIG" --target "$TARGET_LANGUAGE" --catalog "$SOURCE_CATALOG" "${args[@]}"
+          uv run --no-sync python -m scripts.run setup --config "$PROJECT_CONFIG" --target "$TARGET_LANGUAGE"
+          uv run --no-sync python -m scripts.agent status --work "$WORK_DIR" > "$RUNNER_TEMP/status.json"
+          uv run --no-sync python -c 'import json,os; from pathlib import Path; s=json.loads((Path(os.environ["RUNNER_TEMP"])/"status.json").read_text()); print("remaining="+str(s["remaining"]))' >> "$GITHUB_OUTPUT"
+          sha256sum "$WORK_DIR/plan.json" "$WORK_DIR/session.json" "$WORK_DIR/runtime.json" > "$RUNNER_TEMP/inputs.sha256"
+      - name: Configure selected model backend
+        if: (github.event_name == 'schedule' || !inputs.dry_run) && steps.queue.outputs.remaining != '0'
+        env:
+          BACKEND_API_KEY: ${{ secrets[matrix.api_key_env] }}
+        run: |
+          test -n "$BACKEND_API_KEY" || { echo 'Missing the API key secret named by the backend profile' >&2; exit 1; }
+          args=(--backend "$BACKEND")
+          if [ -n "$MODEL" ]; then args+=(--model "$MODEL"); fi
+          uv run --no-sync python -m scripts.ci configure --home "$RUNNER_TEMP/codex-home" --config "$PROJECT_CONFIG" --target "$TARGET_LANGUAGE" "${args[@]}"
+      - name: Run translation agent
+        if: (github.event_name == 'schedule' || !inputs.dry_run) && steps.queue.outputs.remaining != '0'
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets[matrix.api_key_env] }}
+          responses-api-endpoint: ${{ matrix.endpoint }}
+          codex-version: ${{ matrix.codex_version }}
+          codex-home: ${{ runner.temp }}/codex-home
+          working-directory: ${{ github.workspace }}
+          sandbox: workspace-write
+          model: ${{ matrix.model }}
+          effort: ${{ matrix.effort }}
+          prompt-file: ${{ matrix.work }}/agent-prompt.md
+          output-file: ${{ matrix.work }}/agent-report.md
+          codex-args: '["--ephemeral"]'
+          allow-bots: true
+      - name: Independently validate complete results
+        if: github.event_name == 'schedule' || !inputs.dry_run
+        run: |
+          sha256sum --check "$RUNNER_TEMP/inputs.sha256"
+          git diff --exit-code
+          test -z "$(git ls-files --others --exclude-standard)"
+          uv run --no-sync python -m scripts.agent finalize --work "$WORK_DIR"
+      - name: Report progress and prune expired inactive answers
+        if: always() && steps.queue.outcome == 'success'
+        run: |
+          uv run --no-sync python -m scripts.run summary --config "$PROJECT_CONFIG" --target "$TARGET_LANGUAGE" --output "$GITHUB_STEP_SUMMARY"
+          uv run --no-sync python -m scripts.run cache --config "$PROJECT_CONFIG" --target "$TARGET_LANGUAGE" --prune --days 30
+      - uses: actions/cache/save@v6
+        if: always() && steps.cache.outcome == 'success'
+        with:
+          path: ${{ matrix.work }}
+          key: agent-v5-${{ needs.sources.outputs.project }}-${{ matrix.language }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: translation-${{ matrix.language }}
+          path: |
+            ${{ matrix.work }}/plan.json
+            ${{ matrix.work }}/results.json
+            ${{ matrix.work }}/prepare-report.json
+            ${{ matrix.work }}/agent-report.md
+          if-no-files-found: ignore
+          retention-days: 7
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: diagnostics-${{ matrix.language }}
+          path: |
+            ${{ matrix.work }}/agent.log
+            ${{ matrix.work }}/agent.previous.log
+            ${{ matrix.work }}/notes.md
+          if-no-files-found: ignore
+          retention-days: 7
+
+  publish:
+    needs: [sources, translate]
+    if: github.event_name == 'schedule' || !inputs.dry_run
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.1.0
+      - run: uv sync --frozen --all-extras --python 3.14
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: translation-*
+          path: .cache/collected
+      - name: Merge all successful languages from a clean checkout
+        run: |
+          args=()
+          if [ -n "$TARGET_LANGUAGES" ]; then
+            args+=(--target "$TARGET_LANGUAGES")
+          fi
+          uv run --no-sync python -m scripts.ci restore --config "$PROJECT_CONFIG" "${args[@]}" --artifacts .cache/collected
+          uv run --no-sync python -m scripts.run merge --config "$PROJECT_CONFIG" "${args[@]}"
+          uv run --no-sync python -m scripts.run check --config "$PROJECT_CONFIG" "${args[@]}"
+          uv run --no-sync python -m scripts.run summary --config "$PROJECT_CONFIG" "${args[@]}" --output "$GITHUB_STEP_SUMMARY"
+          uv run --no-sync python -m scripts.ci stage --config "$PROJECT_CONFIG" "${args[@]}"
+      - name: Commit a single multilingual update
+        run: |
+          git config user.name 'GitHub Actions'
+          git config user.email 'actions@github.com'
+          if ! git diff --cached --quiet; then
+            git commit -m 'Auto-update translations'
+            git push
+          fi

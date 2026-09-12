@@ -1,0 +1,26 @@
+schema_version = 1
+
+[project]
+id = "demo-game"
+name = "Portable adventure example"
+source_language = "en"
+adapter = "scripts.games.json_file"
+backend = "compatible"
+
+[adapter]
+input = "source.json"
+
+[backends.compatible]
+base_url = "https://api.openai.com/v1"
+api_key_env = "MODEL_API_KEY"
+# Set model here, or use --model / TRANSLATION_MODEL.
+
+[targets.zh-Hans]
+name = "简体中文"
+translations = "generated/zh-Hans"
+style = "zh-Hans.md"
+
+[targets.es]
+name = "Español"
+translations = "generated/es"
+style = "es.md"

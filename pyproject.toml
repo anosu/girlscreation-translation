@@ -1,0 +1,34 @@
+[project]
+name = "girlscreation-translation"
+version = "0.1.0"
+description = "Configurable multilingual game-localization workflow with Codex agents"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "langcodes>=3.5,<4",
+    "pydantic>=2.12,<3",
+    "tomli-w>=1.2,<2",
+]
+
+[project.optional-dependencies]
+girlscreation = [
+    "httpx>=0.28.1",
+    "pycryptodome>=3.23.0",
+    "unitypy>=1.25.3,<1.26",
+]
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.414,<2",
+    "ruff>=0.15,<1",
+]
+
+[tool.pyright]
+include = ["scripts"]
+pythonVersion = "3.14"
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
+
+[tool.ruff.lint]
+select = ["E9", "F", "I"]

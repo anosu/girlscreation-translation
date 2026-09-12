@@ -7,12 +7,16 @@ import staticFiles from '@fastify/static'
 const app = Fastify()
 const port = Number(process.env.PORT || 12315)
 
+if (process.argv.length > 2) {
+    throw new Error('The static server takes no command-line options; use PORT to set the port')
+}
+
 if (!Number.isInteger(port) || port < 0 || port > 65535) {
     throw new Error('PORT must be an integer between 0 and 65535')
 }
 
 await app.register(cors, {
-    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'],
+    methods: ['GET', 'HEAD'],
     strictPreflight: false,
 })
 await app.register(compress, {
@@ -20,7 +24,7 @@ await app.register(compress, {
     encodings: ['br', 'gzip', 'deflate'],
 })
 
-app.all('/', (_request, reply) => {
+app.get('/', (_request, reply) => {
     return reply.redirect('https://github.com/anosu/girlscreaionr-translation')
 })
 

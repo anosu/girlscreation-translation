@@ -1,0 +1,38 @@
+name: Check Translation Pipeline
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      HUSKY: '0'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --all-extras --python 3.14
+      - run: npm ci
+      - name: Enable user namespaces for sandboxed CLI integration tests
+        run: |
+          # Same prerequisite configured by codex-action before an agent run.
+          if [ -f /proc/sys/kernel/unprivileged_userns_clone ]; then
+            sudo sysctl -w kernel.unprivileged_userns_clone=1
+          fi
+          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run check:translations

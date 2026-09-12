@@ -1,0 +1,48 @@
+{
+    "source_language": "ja",
+    "target": "zh-Hans",
+    "cases": [
+        {
+            "id": "esty",
+            "source": "エスティー",
+            "reference": "艾丝缇",
+            "review_status": "confirmed",
+            "note": "用户明确确定的角色译名。",
+            "rules": {"required_terms": {"エスティー": "艾丝缇"}}
+        },
+        {
+            "id": "esty-alias",
+            "source": "エスティ―",
+            "reference": "艾丝缇",
+            "review_status": "confirmed",
+            "note": "同一角色的横线字形变体。",
+            "rules": {"required_terms": {"エスティ―": "艾丝缇"}}
+        },
+        {
+            "id": "title",
+            "source": "夜の美術館",
+            "reference": "夜晚的美术馆",
+            "note": "构造的标题样例；参考译文待人工审阅。"
+        },
+        {
+            "id": "placeholder",
+            "source": "館長、{0}へようこそ！",
+            "reference": "馆长，欢迎来到{0}！",
+            "note": "构造的对话样例；需保留占位符，参考译文待审阅。",
+            "rules": {"protected_patterns": ["\\{[^{}]+\\}"]}
+        },
+        {
+            "id": "markup",
+            "source": "<color=red>注意</color>\n戻れません。",
+            "reference": "<color=red>注意</color>\n无法返回。",
+            "note": "构造的格式样例；需保留标签及换行，参考译文待审阅。",
+            "rules": {"preserve_tags": true, "preserve_newlines": true}
+        },
+        {
+            "id": "item",
+            "source": "小さな絵筆",
+            "reference": "小画笔",
+            "note": "构造的道具名称样例；参考译文待人工审阅。"
+        }
+    ]
+}

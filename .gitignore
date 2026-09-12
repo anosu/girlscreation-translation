@@ -4,21 +4,17 @@
 .pnp.js
 
 # Build outputs
-/build
-/dist
-/scripts/agent/dist
+build/
+dist/
 
 # Python cache and compiled files
 __pycache__/
 *.py[codz]
-*.pyc
 
 # Python packaging
 *.egg-info/
 *.egg
-build/
 develop-eggs/
-dist/
 eggs/
 lib/
 lib64/
@@ -47,6 +43,7 @@ htmlcov/
 .idea/
 
 # Logs and databases
+.cache/
 *.log
 *.pid
 db.sqlite3
@@ -72,5 +69,5 @@ decompile
 .turbo
 .vercel
 
-# GalTransl (specific to your project)
+# Legacy local checkout (not used by the translation pipeline)
 GalTransl/

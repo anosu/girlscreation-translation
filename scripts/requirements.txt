@@ -1,4 +1,0 @@
-openai
-pycryptodome
-httpx==0.27.2
-UnityPy==1.10.18

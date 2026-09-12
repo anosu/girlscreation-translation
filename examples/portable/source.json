@@ -1,0 +1,22 @@
+[
+    {
+        "id": "character-rook", "category": "names", "group": "cast", "source": "Rook",
+        "targets": [{"file": "characters.json", "path": ["Rook"]}],
+        "context": {"role": "Guide who greets the player"}, "term": true, "use_terms": true
+    },
+    {
+        "id": "arrival-1", "category": "dialogue", "group": "chapter 1 / arrival", "source": "Welcome, {player}!",
+        "targets": [{"file": "scenes/arrival.json", "path": ["line-1"]}],
+        "context": {"speaker": "Rook", "line": 1}, "rules": {"protected_patterns": ["\\{[^{}]+\\}"]}
+    },
+    {
+        "id": "arrival-2", "category": "dialogue", "group": "chapter 1 / arrival", "source": "Take the northern road.",
+        "targets": [{"file": "scenes/arrival.json", "path": ["line-2"]}],
+        "context": {"speaker": "Rook", "line": 2}
+    },
+    {
+        "id": "menu-start", "category": "ui", "group": "main menu", "source": "Start game",
+        "targets": [{"file": "interface.json", "path": ["menu", "start"]}],
+        "context": {"screen": "main menu"}
+    }
+]

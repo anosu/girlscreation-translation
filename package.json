@@ -8,10 +8,21 @@
   },
   "scripts": {
     "start": "node app.ts",
-    "typecheck": "tsc --noEmit"
+    "workflow": "uv run --no-sync python -m scripts.run",
+    "lint": "uv run --no-sync ruff check scripts tests && uv run --no-sync ruff format --check scripts tests",
+    "format": "uv run --no-sync ruff format scripts tests",
+    "typecheck": "npm run typecheck:python && npm run typecheck:typescript",
+    "typecheck:python": "uv run --no-sync pyright",
+    "typecheck:typescript": "tsc --noEmit",
+    "prepare": "husky",
+    "build:manifest": "uv run --no-sync python -m scripts.build",
+    "check:translations": "uv run --no-sync python -m scripts.run check",
+    "test": "uv run --no-sync python -m unittest discover -s tests -v"
   },
   "devDependencies": {
+    "@openai/codex": "0.154.0",
     "@types/node": "^22.20.2",
+    "husky": "^9.1.7",
     "typescript": "^7.0.2"
   },
   "dependencies": {
