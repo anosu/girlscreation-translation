@@ -122,13 +122,13 @@ jobs:
           name: original-sources
           path: ${{ steps.meta.outputs.source_bundle }}
           compression-level: 0
-          retention-days: 7
+          retention-days: 1
 
       - uses: actions/upload-artifact@v7
         with:
           name: source-catalog
           path: ${{ steps.meta.outputs.catalog }}
-          retention-days: 7
+          retention-days: 1
 
   translate:
     needs: sources
@@ -233,7 +233,7 @@ jobs:
             ${{ matrix.work }}/prepare-report.json
             ${{ matrix.work }}/agent-report.md
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 1
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
@@ -243,7 +243,7 @@ jobs:
             ${{ matrix.work }}/agent.previous.log
             ${{ matrix.work }}/notes.md
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 1
 
   publish:
     needs: [sources, translate]
