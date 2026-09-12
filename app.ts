@@ -25,7 +25,7 @@ await app.register(compress, {
 })
 
 app.get('/', (_request, reply) => {
-    return reply.redirect('https://github.com/anosu/girlscreaionr-translation')
+    return reply.redirect('https://github.com/anosu/girlscreation-translation')
 })
 
 app.setErrorHandler((error, _request, reply) => {
