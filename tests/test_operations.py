@@ -261,6 +261,24 @@ class OperationsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "incomplete"):
             restore_artifacts(self.project, [restored], artifact.parent)
 
+    def test_publish_restores_single_artifact_from_download_root(self):
+        self.prepare("es")
+        self.translate("es")
+        target = self.project.targets["es"]
+        artifact = self.root / "download"
+        for name in ("plan.json", "results.json", "prepare-report.json"):
+            write_json(artifact / name, read_json(target.work / name))
+        restored = replace(target, work=self.root / "restored")
+        restore_artifacts(self.project, [restored], artifact)
+        merge_results(self.project, restored)
+        self.assertEqual(status(restored)["state"], "published")
+        with self.assertRaisesRegex(ValueError, "exactly one target"):
+            restore_artifacts(
+                self.project, list(self.project.targets.values()), artifact
+            )
+        with self.assertRaisesRegex(ValueError, "another project or language"):
+            restore_artifacts(self.project, [self.project.targets["zh-Hans"]], artifact)
+
     def test_agent_and_ci_commands_have_separate_arguments(self):
         for parser, args in (
             (agent_parser(), ["next"]),

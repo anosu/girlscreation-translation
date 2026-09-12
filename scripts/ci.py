@@ -61,8 +61,11 @@ def github_outputs(values: dict, path: Path) -> None:
 
 def restore_artifacts(project: Project, targets: list[Target], artifacts: Path) -> None:
     """Restore publication inputs; answer caches and diagnostics stay out of publish."""
+    flat = (artifacts / "plan.json").is_file()
+    if flat and len(targets) != 1:
+        raise ValueError("A flat artifact directory requires exactly one target")
     for target in targets:
-        directory = artifacts / f"translation-{target.code}"
+        directory = artifacts if flat else artifacts / f"translation-{target.code}"
         plan = read_plan(directory)
         if (plan.project, plan.language, plan.source_language) != (
             project.id,
