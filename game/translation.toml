@@ -20,7 +20,7 @@ api_key_env = "DEEPSEEK_API_KEY"
 model = "deepseek-flash"
 
 [backends.deepseek.codex]
-effort = "high"
+effort = "medium"
 context_window = 1_000_000
 
 [backends.openai]
