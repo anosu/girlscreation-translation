@@ -1,0 +1,22 @@
+[
+    {
+        "id": "cast",
+        "output": "names.json",
+        "kind": "text",
+        "term": true,
+        "blocks": [{"texts": ["Rook"]}]
+    },
+    {
+        "id": "arrival",
+        "output": "scenes/arrival.json",
+        "kind": "dialogue",
+        "lines": [["Rook", "Welcome, {player}!"], ["Rook", "Take the northern road."]],
+        "rules": {"protected_patterns": ["\\{[^{}]+\\}"]}
+    },
+    {
+        "id": "menu",
+        "output": "interface.json",
+        "kind": "text",
+        "blocks": [{"texts": ["Start game"]}]
+    }
+]

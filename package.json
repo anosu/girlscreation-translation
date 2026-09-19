@@ -8,15 +8,15 @@
   },
   "scripts": {
     "start": "node app.ts",
-    "workflow": "uv run --no-sync python -m scripts.run",
-    "lint": "uv run --no-sync ruff check scripts tests && uv run --no-sync ruff format --check scripts tests",
-    "format": "uv run --no-sync ruff format scripts tests",
+    "workflow": "uv run --no-sync python -m workflow",
+    "lint": "uv run --no-sync ruff check workflow adapters tests && uv run --no-sync ruff format --check workflow adapters tests",
+    "format": "uv run --no-sync ruff format workflow adapters tests",
     "typecheck": "npm run typecheck:python && npm run typecheck:typescript",
     "typecheck:python": "uv run --no-sync pyright",
     "typecheck:typescript": "tsc --noEmit",
     "prepare": "husky",
-    "build:manifest": "uv run --no-sync python -m scripts.build",
-    "check:translations": "uv run --no-sync python -m scripts.run check",
+    "build:manifest": "uv run --no-sync python -m workflow.build",
+    "check:translations": "uv run --no-sync python -m workflow check",
     "test": "uv run --no-sync python -m unittest discover -s tests -v && node --test tests/server.test.mjs"
   },
   "devDependencies": {

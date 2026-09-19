@@ -16,11 +16,11 @@ from unittest.mock import patch
 
 import tomli_w
 
-from scripts.adapters import load_adapter
-from scripts.config import ROOT, load_project
-from scripts.prepare import prepare_tasks
-from scripts.translate import codex_command, execute_codex, translate_plan
-from scripts.utils import read_json, write_json
+from workflow.config import ROOT, load_project
+from workflow.prepare import prepare_tasks
+from workflow.snapshot import sync_sources
+from workflow.translate import codex_command, execute_codex, translate_plan
+from workflow.utils import read_json, write_json
 
 
 @contextmanager
@@ -108,6 +108,8 @@ class CodexIntegrationTests(unittest.TestCase):
                 project.backend(project.targets["zh-Hans"]),
                 base_url=endpoint,
                 api_key_env="MODEL_TEST_KEY",
+                model="test-model",
+                effort="high",
             )
             command = codex_command(backend, work)
             self.assertFalse(any("model_catalog_json" in arg for arg in command))
@@ -125,8 +127,11 @@ class CodexIntegrationTests(unittest.TestCase):
             self.assertEqual(request["reasoning"]["effort"], "high")
             self.assertEqual(request["reasoning"].get("summary", "none"), "none")
             self.assertEqual(
-                request["instructions"].strip(),
-                (ROOT / "prompts/agent-system.md").read_text(encoding="utf-8").strip(),
+                request["instructions"].strip().splitlines(),
+                (ROOT / "workflow/prompts/agent-system.md")
+                .read_text(encoding="utf-8")
+                .strip()
+                .splitlines(),
             )
             self.assertTrue(
                 any(
@@ -145,40 +150,21 @@ class CodexIntegrationTests(unittest.TestCase):
             prefix="agent-test-", dir=ROOT / ".cache"
         ) as temporary:
             root = Path(temporary)
-            translations, sources, work = (
+            translations, work = (
                 root / "zh-Hans",
-                root / "sources",
                 root / "work",
             )
-            write_json(
-                translations / "names.json",
-                read_json(ROOT / "translations/zh-Hans/names.json"),
-            )
             write_json(translations / "master.json", {})
-            write_json(
-                sources / "master.json",
-                {
-                    "mItems": [
-                        {"id": 1, "ml_description": ["テスト{0}"], "ml_name": ["道具"]}
-                    ]
-                },
-            )
             task = {
                 "id": "item-1",
-                "category": "master",
-                "group": "items",
-                "source": "テスト{0}",
+                "kind": "text",
+                "output": "master.json",
+                "blocks": [{"texts": ["テスト{0}"]}],
                 "context": {
                     "table": "mItems",
                     "field": "ml_description",
                     "record_ids": [1],
                 },
-                "targets": [
-                    {
-                        "file": "master.json",
-                        "path": ["mItems", "ml_description[]", "テスト{0}"],
-                    }
-                ],
                 "rules": {"protected_patterns": [r"\{[^{}]+\}"]},
             }
             write_json(root / "input.json", [task])
@@ -187,7 +173,7 @@ class CodexIntegrationTests(unittest.TestCase):
                 "project": {
                     "id": "integration",
                     "source_language": "ja",
-                    "adapter": "scripts.games.json_file",
+                    "adapter": "adapters.json_file",
                     "backend": "test",
                     "sources": "sources",
                 },
@@ -196,7 +182,7 @@ class CodexIntegrationTests(unittest.TestCase):
                     "test": {
                         "base_url": "http://127.0.0.1",
                         "api_key_env": "MODEL_TEST_KEY",
-                        "model": "deepseek-flash",
+                        "model": "test-model",
                         "codex": {"effort": "high", "context_window": 1_000_000},
                     }
                 },
@@ -207,18 +193,16 @@ class CodexIntegrationTests(unittest.TestCase):
             )
             project = load_project(root / "translation.toml")
             target = project.targets["zh-Hans"]
-            load_adapter(project.adapter).fetch(
-                sources, None, {**project.options, "root": str(root)}
-            )
+            sync_sources(project)
             prepare_tasks(project, target)
             helper = work / "exercise_tools.py"
             helper.write_text(
                 "import sys,json\nfrom pathlib import Path\nsys.path.insert(0,"
                 + repr(str(ROOT))
                 + ")\n"
-                "from scripts.session import Session\ns=Session(Path(sys.argv[1]))\nkey=next(iter(s.tasks))\n"
-                "context=s.context(key)\n(s.work/'context-used.json').write_text(json.dumps(context),encoding='utf-8')\n"
-                "print(s.submit({'translations':[{'id':key,'translation':'测试译文{0}'}]}))\n",
+                "from workflow.session import Session\ns=Session(Path(sys.argv[1]))\npacket=s.next_group()\n"
+                "context=s.read_resource(packet['resource'],packet=packet['packet'])\n(s.work/'context-used.json').write_text(json.dumps(context),encoding='utf-8')\n"
+                "print(s.submit_packet(packet['packet'],{'1':'测试译文{0}'}))\n",
                 encoding="utf-8",
             )
             argv = [sys.executable, str(helper), str(work)]
@@ -295,7 +279,7 @@ class CodexIntegrationTests(unittest.TestCase):
                     )
                 )
                 self.assertEqual(
-                    read_json(work / "context-used.json")["group"][0]["id"], "item-1"
+                    read_json(work / "context-used.json")["resource"], "item-1"
                 )
                 self.assertEqual(
                     read_json(work / "results.json")["translations"][0]["translation"],

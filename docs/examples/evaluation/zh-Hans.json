@@ -1,0 +1,46 @@
+{
+    "source_language": "ja",
+    "target": "zh-Hans",
+    "cases": [
+        {
+            "id": "save",
+            "source": "セーブ",
+            "reference": "保存",
+            "review_status": "confirmed",
+            "note": "通用界面用语示例，不作为运行时的强制译法。"
+        },
+        {
+            "id": "load",
+            "source": "ロード",
+            "reference": "读取",
+            "review_status": "confirmed",
+            "note": "通用界面用语示例，不作为运行时的强制译法。"
+        },
+        {
+            "id": "title",
+            "source": "夜の森",
+            "reference": "夜晚的森林",
+            "note": "构造的标题样例；参考译文待人工审阅。"
+        },
+        {
+            "id": "placeholder",
+            "source": "{0}へようこそ！",
+            "reference": "欢迎来到{0}！",
+            "note": "构造的对话样例；需保留占位符，参考译文待审阅。",
+            "rules": {"protected_patterns": ["\\{[^{}]+\\}"]}
+        },
+        {
+            "id": "markup",
+            "source": "<color=red>注意</color>\n戻れません。",
+            "reference": "<color=red>注意</color>\n无法返回。",
+            "note": "构造的格式样例；需保留标签及换行，参考译文待审阅。",
+            "rules": {"preserve_tags": true, "preserve_newlines": true}
+        },
+        {
+            "id": "item",
+            "source": "小さな鍵",
+            "reference": "小钥匙",
+            "note": "构造的道具名称样例；参考译文待人工审阅。"
+        }
+    ]
+}

@@ -1,0 +1,7 @@
+{
+    "preserve_tags": true,
+    "preserve_newlines": true,
+    "protected_patterns": ["<[^>]+>|\\{[^{}\\r\\n]+\\}|%(?:\\d+\\$)?[-+#0 ]*\\d*(?:\\.\\d+)?[sdif]|\\\\[nrt]"],
+    "name_kinds": ["terms"],
+    "number_kinds": ["text"]
+}

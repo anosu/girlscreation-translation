@@ -24,7 +24,7 @@ dev = [
 ]
 
 [tool.pyright]
-include = ["scripts"]
+include = ["workflow", "adapters"]
 pythonVersion = "3.14"
 typeCheckingMode = "standard"
 venvPath = "."

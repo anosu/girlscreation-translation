@@ -6,36 +6,40 @@ on:
       config:
         description: Project configuration
         type: string
-        default: translation.toml
+        default: game/translation.toml
       targets:
-        description: Comma-separated target locales (empty uses all declared targets)
+        description: Comma-separated target languages
         type: string
         default: ''
       backend:
-        description: Backend profile override (empty uses language settings)
+        description: Backend override
         type: string
         default: ''
       model:
         description: Model override
         type: string
         default: ''
-      dry_run:
-        description: Prepare tasks without model calls or publication
+      plan_only:
+        description: Sync and plan without model calls or publication (acquisition may access the network)
         type: boolean
         default: true
       check_existing:
-        description: Check previously published content too
+        description: Re-fetch published Girls Creation stories too (higher acquisition cost)
         type: boolean
         default: false
+      source_ids:
+        description: Comma-separated Girls Creation novel IDs (empty uses adapter defaults)
+        type: string
+        default: ''
       limit:
-        description: Maximum tasks per language (0 means all)
+        description: Maximum pending resources per language (0 means all; does not limit acquisition)
         type: string
         default: '0'
   workflow_call:
     inputs:
       config:
         type: string
-        default: translation.toml
+        default: game/translation.toml
       targets:
         type: string
         default: ''
@@ -45,15 +49,19 @@ on:
       model:
         type: string
         default: ''
-      dry_run:
+      plan_only:
         type: boolean
         default: true
       check_existing:
         type: boolean
         default: false
+      source_ids:
+        type: string
+        default: ''
       limit:
         type: string
         default: '0'
+
   schedule:
     - cron: '30 5 * * 1-6'
     - cron: '30 5 * * 0'
@@ -62,17 +70,18 @@ permissions:
   contents: read
 
 concurrency:
-  group: translation-${{ inputs.config || 'translation.toml' }}
+  group: translation-${{ inputs.config || 'game/translation.toml' }}
   cancel-in-progress: false
 
 env:
   HUSKY: '0'
-  PROJECT_CONFIG: ${{ inputs.config || 'translation.toml' }}
+  PROJECT_CONFIG: ${{ inputs.config || 'game/translation.toml' }}
   TARGET_LANGUAGES: ${{ inputs.targets || '' }}
   TRANSLATION_BACKEND: ${{ inputs.backend || vars.TRANSLATION_BACKEND || '' }}
   TRANSLATION_MODEL: ${{ inputs.model || vars.TRANSLATION_MODEL || '' }}
   TASK_LIMIT: ${{ inputs.limit || vars.TRANSLATION_LIMIT || '0' }}
-  CHECK_EXISTING: ${{ inputs.check_existing || github.event.schedule == '30 5 * * 0' }}
+  GIRLSCREATION_CHECK_EXISTING: ${{ (inputs.check_existing || github.event.schedule == '30 5 * * 0') && 'true' || '' }}
+  SOURCE_IDS: ${{ inputs.source_ids || '' }}
 
 jobs:
   sources:
@@ -83,146 +92,110 @@ jobs:
       project: ${{ steps.meta.outputs.project }}
       sources: ${{ steps.meta.outputs.sources }}
       source_bundle: ${{ steps.meta.outputs.source_bundle }}
-      catalog: ${{ steps.meta.outputs.catalog }}
-      catalog_dir: ${{ steps.meta.outputs.catalog_dir }}
+      bundle_dir: ${{ steps.meta.outputs.bundle_dir }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@v10.1.0
-        with:
-          enable-cache: true
       - run: uv sync --frozen --all-extras --python 3.14
-      - name: Read project and language matrix
-        id: meta
+      - id: meta
         run: |
           args=()
           if [ -n "$TARGET_LANGUAGES" ]; then args+=(--target "$TARGET_LANGUAGES"); fi
-          uv run --no-sync python -m scripts.ci matrix --config "$PROJECT_CONFIG" "${args[@]}" --github-output "$GITHUB_OUTPUT"
-      - uses: actions/cache/restore@v6
-        id: cache
+          uv run --no-sync python -m workflow.ci matrix --config "$PROJECT_CONFIG" "${args[@]}" --github-output "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
         with:
-          path: ${{ steps.meta.outputs.sources }}
-          key: sources-v3-${{ steps.meta.outputs.project }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: sources-v3-${{ steps.meta.outputs.project }}-
-      - name: Fetch shared original data once
+          path: |
+            ${{ steps.meta.outputs.sources }}
+            ${{ steps.meta.outputs.adapter_cache }}
+          key: sources-v8-${{ steps.meta.outputs.project }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: sources-v8-${{ steps.meta.outputs.project }}-
+      - name: Collect once and export immutable resources
         run: |
           args=()
           if [ -n "$TARGET_LANGUAGES" ]; then args+=(--target "$TARGET_LANGUAGES"); fi
-          if [ "$CHECK_EXISTING" = 'true' ]; then args+=(--check-existing); fi
-          uv run --no-sync python -m scripts.run fetch --config "$PROJECT_CONFIG" "${args[@]}"
-          uv run --no-sync python -m scripts.run catalog --config "$PROJECT_CONFIG" --export "${args[@]}"
-      - uses: actions/cache/save@v6
-        if: always() && steps.cache.outcome == 'success'
-        with:
-          path: ${{ steps.meta.outputs.sources }}
-          key: sources-v3-${{ steps.meta.outputs.project }}-${{ github.run_id }}-${{ github.run_attempt }}
+          if [ -n "$SOURCE_IDS" ]; then
+            IFS=',' read -ra ids <<< "$SOURCE_IDS"
+            for id in "${ids[@]}"; do args+=(--source-id "$id"); done
+          fi
+          uv run --no-sync python -m workflow sync --config "$PROJECT_CONFIG" "${args[@]}" --export
       - uses: actions/upload-artifact@v7
         with:
           name: original-sources
           path: ${{ steps.meta.outputs.source_bundle }}
-          compression-level: 0
-          retention-days: 1
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: source-catalog
-          path: ${{ steps.meta.outputs.catalog }}
           retention-days: 1
 
   translate:
     needs: sources
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.sources.outputs.matrix) }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
     env:
       TARGET_LANGUAGE: ${{ matrix.language }}
       WORK_DIR: ${{ matrix.work }}
-      BACKEND: ${{ matrix.backend }}
-      MODEL: ${{ matrix.model }}
-      SOURCE_CATALOG: ${{ needs.sources.outputs.catalog }}
+      TRANSLATION_BACKEND: ${{ matrix.backend }}
+      TRANSLATION_MODEL: ${{ matrix.model }}
       SOURCE_BUNDLE: ${{ needs.sources.outputs.source_bundle }}
       SOURCE_DIR: ${{ needs.sources.outputs.sources }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@v10.1.0
+      - uses: actions/setup-node@v7
         with:
-          enable-cache: true
+          node-version: '24'
+          cache: npm
+      - uses: astral-sh/setup-uv@v10.1.0
       - run: uv sync --frozen --all-extras --python 3.14
+      - run: npm ci
       - uses: actions/download-artifact@v8
         with:
           name: original-sources
-          path: ${{ needs.sources.outputs.catalog_dir }}
-      - uses: actions/download-artifact@v8
-        with:
-          name: source-catalog
-          path: ${{ needs.sources.outputs.catalog_dir }}
-      - name: Unpack selected sources
-        run: uv run --no-sync python -m zipfile -e "$SOURCE_BUNDLE" "$SOURCE_DIR"
+          path: ${{ needs.sources.outputs.bundle_dir }}
+      - run: uv run --no-sync python -m zipfile -e "$SOURCE_BUNDLE" "$SOURCE_DIR"
       - uses: actions/cache/restore@v6
         id: cache
         with:
           path: ${{ matrix.work }}
-          key: agent-v7-${{ needs.sources.outputs.project }}-${{ matrix.language }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: agent-v7-${{ needs.sources.outputs.project }}-${{ matrix.language }}-
-      - name: Prepare isolated language queue
-        id: queue
+          key: answers-v9-${{ needs.sources.outputs.project }}-${{ matrix.language }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: answers-v9-${{ needs.sources.outputs.project }}-${{ matrix.language }}-
+      - name: Plan from local resources
         run: |
           args=()
           if [ "$TASK_LIMIT" != '0' ]; then args+=(--limit "$TASK_LIMIT"); fi
-          if [ "$CHECK_EXISTING" = 'true' ]; then args+=(--check-existing); fi
-          uv run --no-sync python -m scripts.run prepare --config "$PROJECT_CONFIG" --target "$TARGET_LANGUAGE" --catalog "$SOURCE_CATALOG" "${args[@]}"
-          uv run --no-sync python -m scripts.run setup --config "$PROJECT_CONFIG" --target "$TARGET_LANGUAGE"
-          uv run --no-sync python -m scripts.agent status --work "$WORK_DIR" > "$RUNNER_TEMP/status.json"
-          uv run --no-sync python -c 'import json,os; from pathlib import Path; s=json.loads((Path(os.environ["RUNNER_TEMP"])/"status.json").read_text()); print("remaining="+str(s["remaining"]))' >> "$GITHUB_OUTPUT"
-          sha256sum "$WORK_DIR/plan.json" "$WORK_DIR/session.json" "$WORK_DIR/runtime.json" > "$RUNNER_TEMP/inputs.sha256"
-      - name: Configure selected model backend
-        if: (github.event_name == 'schedule' || !inputs.dry_run) && steps.queue.outputs.remaining != '0'
+          uv run --no-sync python -m workflow plan --config "$PROJECT_CONFIG" --target "$TARGET_LANGUAGE" "${args[@]}"
+      - name: Enable sandboxed processes
+        if: ${{ !inputs.plan_only }}
+        run: |
+          if [ -f /proc/sys/kernel/unprivileged_userns_clone ]; then sudo sysctl -w kernel.unprivileged_userns_clone=1; fi
+          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0; fi
+      - name: Translate one resource packet per agent session
+        if: ${{ !inputs.plan_only }}
         env:
+          API_KEY_ENV: ${{ matrix.api_key_env }}
           BACKEND_API_KEY: ${{ secrets[matrix.api_key_env] }}
         run: |
-          test -n "$BACKEND_API_KEY" || { echo 'Missing the API key secret named by the backend profile' >&2; exit 1; }
-          args=(--backend "$BACKEND")
-          if [ -n "$MODEL" ]; then args+=(--model "$MODEL"); fi
-          uv run --no-sync python -m scripts.ci configure --home "$RUNNER_TEMP/codex-home" --config "$PROJECT_CONFIG" --target "$TARGET_LANGUAGE" "${args[@]}"
-      - name: Run translation agent
-        if: (github.event_name == 'schedule' || !inputs.dry_run) && steps.queue.outputs.remaining != '0'
-        # v1.12 can hang after final output: https://github.com/openai/codex-action/issues/169
-        uses: openai/codex-action@52fe01ec70a42f454c9d2ebd47598f9fd6893d56 # v1.11
-        with:
-          openai-api-key: ${{ secrets[matrix.api_key_env] }}
-          responses-api-endpoint: ${{ matrix.endpoint }}
-          codex-version: ${{ matrix.codex_version }}
-          codex-home: ${{ runner.temp }}/codex-home
-          working-directory: ${{ github.workspace }}
-          sandbox: workspace-write
-          model: ${{ matrix.model }}
-          effort: ${{ matrix.effort }}
-          prompt-file: ${{ matrix.work }}/agent-prompt.md
-          output-file: ${{ matrix.work }}/agent-report.md
-          codex-args: '["--ephemeral"]'
-          allow-bots: true
-      - name: Independently validate complete results
-        if: github.event_name == 'schedule' || !inputs.dry_run
-        run: |
-          sha256sum --check "$RUNNER_TEMP/inputs.sha256"
+          if ! uv run --no-sync python -c 'import os,sys; os.environ[os.environ["API_KEY_ENV"]]=os.environ.pop("BACKEND_API_KEY"); from workflow.cli import main; main()' translate --config "$PROJECT_CONFIG" --target "$TARGET_LANGUAGE"; then
+            if [ -f "$WORK_DIR/agent.log" ]; then tail -n 100 "$WORK_DIR/agent.log"; fi
+            exit 1
+          fi
           git diff --exit-code
-          test -z "$(git ls-files --others --exclude-standard)"
-          uv run --no-sync python -m scripts.agent finalize --work "$WORK_DIR"
-      - name: Report progress and prune expired inactive answers
-        if: always() && steps.queue.outcome == 'success'
-        run: |
-          uv run --no-sync python -m scripts.run summary --config "$PROJECT_CONFIG" --target "$TARGET_LANGUAGE" --output "$GITHUB_STEP_SUMMARY"
-          uv run --no-sync python -m scripts.run cache --config "$PROJECT_CONFIG" --target "$TARGET_LANGUAGE" --prune --days 30
+          untracked=$(git ls-files --others --exclude-standard)
+          if [ -n "$untracked" ]; then
+            printf 'Unexpected untracked files after translation:\n%s\n' "$untracked"
+            exit 1
+          fi
+      - name: Summarize
+        if: always()
+        run: uv run --no-sync python -m workflow summary --config "$PROJECT_CONFIG" --target "$TARGET_LANGUAGE" --output "$GITHUB_STEP_SUMMARY"
       - uses: actions/cache/save@v6
-        if: always() && steps.cache.outcome == 'success'
+        if: always()
         with:
           path: ${{ matrix.work }}
-          key: agent-v7-${{ needs.sources.outputs.project }}-${{ matrix.language }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: answers-v9-${{ needs.sources.outputs.project }}-${{ matrix.language }}-${{ github.run_id }}-${{ github.run_attempt }}
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -232,22 +205,11 @@ jobs:
             ${{ matrix.work }}/results.json
             ${{ matrix.work }}/prepare-report.json
             ${{ matrix.work }}/agent-report.md
-          if-no-files-found: ignore
-          retention-days: 1
-      - uses: actions/upload-artifact@v7
-        if: failure()
-        with:
-          name: diagnostics-${{ matrix.language }}
-          path: |
-            ${{ matrix.work }}/agent.log
-            ${{ matrix.work }}/agent.previous.log
-            ${{ matrix.work }}/notes.md
-          if-no-files-found: ignore
           retention-days: 1
 
   publish:
     needs: [sources, translate]
-    if: github.event_name == 'schedule' || !inputs.dry_run
+    if: ${{ !inputs.plan_only }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -259,20 +221,15 @@ jobs:
         with:
           pattern: translation-*
           path: .cache/collected
-      - name: Merge all successful languages from a clean checkout
+      - name: Publish all successful languages
         run: |
           args=()
-          if [ -n "$TARGET_LANGUAGES" ]; then
-            args+=(--target "$TARGET_LANGUAGES")
-          fi
-          uv run --no-sync python -m scripts.ci restore --config "$PROJECT_CONFIG" "${args[@]}" --artifacts .cache/collected
-          uv run --no-sync python -m scripts.run merge --config "$PROJECT_CONFIG" "${args[@]}"
-          if [ "$CHECK_EXISTING" = 'true' ]; then
-            uv run --no-sync python -m scripts.run check --config "$PROJECT_CONFIG" "${args[@]}"
-          fi
-          uv run --no-sync python -m scripts.run summary --config "$PROJECT_CONFIG" "${args[@]}" --output "$GITHUB_STEP_SUMMARY"
-          uv run --no-sync python -m scripts.ci stage --config "$PROJECT_CONFIG" "${args[@]}"
-      - name: Commit a single multilingual update
+          if [ -n "$TARGET_LANGUAGES" ]; then args+=(--target "$TARGET_LANGUAGES"); fi
+          uv run --no-sync python -m workflow.ci restore --config "$PROJECT_CONFIG" "${args[@]}" --artifacts .cache/collected
+          uv run --no-sync python -m workflow publish --config "$PROJECT_CONFIG" "${args[@]}"
+          uv run --no-sync python -m workflow check --config "$PROJECT_CONFIG" "${args[@]}"
+          uv run --no-sync python -m workflow.ci stage --config "$PROJECT_CONFIG" "${args[@]}"
+      - name: Commit one publication
         run: |
           git config user.name 'GitHub Actions'
           git config user.email 'actions@github.com'

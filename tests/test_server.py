@@ -10,8 +10,8 @@ import time
 import unittest
 from pathlib import Path
 
-from scripts.config import ROOT
-from scripts.utils import write_json
+from workflow.config import ROOT
+from workflow.utils import write_json
 
 
 class ServerTests(unittest.TestCase):

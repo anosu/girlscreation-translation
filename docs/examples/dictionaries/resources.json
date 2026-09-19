@@ -1,0 +1,48 @@
+[
+    {
+        "id": "names",
+        "output": "names.json",
+        "kind": "text",
+        "blocks": [{"texts": ["村人", "主人公", "案内人"]}]
+    },
+    {
+        "id": "novel/1",
+        "output": "novels/1.json",
+        "kind": "dialogue",
+        "context": {"title": "握手は心の中だけで"},
+        "lines": [
+            ["村人", "ようこそ、風見の村へ。長旅でお疲れでしょう。"],
+            ["主人公", "はじめまして。{player_name}と申します。"],
+            ["村人", "握手は心の中だけでお願いします。"],
+            ["主人公", "えっ、何か理由があるんですか？"],
+            [null, "村人は包帯を巻いた右手を、そっと背中に隠した。"],
+            ["村人", "畑仕事で少し傷めましてね。お気になさらず。"],
+            ["案内人", "お話の途中ですが、宿までご案内しましょう。"],
+            ["主人公", "ありがとうございます。"],
+            ["案内人", "橋を渡ったら、右へ。<br>青い屋根が目印です。"],
+            [null, "風が麦畑を揺らし、遠くで鐘が二度鳴った。"],
+            ["村人", "夜は北の門を閉めますから、帰りが遅くならないように。"],
+            ["主人公", "ありがとうございます。"]
+        ]
+    },
+    {
+        "id": "mActionPatterns/name",
+        "output": "master.json",
+        "path": ["mActionPatterns", "name"],
+        "kind": "text",
+        "blocks": [{"texts": ["AI：攻撃的", "AI：防御的", "AI：バランス", "強敵を優先せよ", "敵の数を減らせ"]}]
+    },
+    {
+        "id": "mActiveSkillSideEffectFilters/ml_name",
+        "output": "master.json",
+        "path": ["mActiveSkillSideEffectFilters", "ml_name[]"],
+        "kind": "text",
+        "blocks": [{"texts": ["即死", "再行動", "弾き飛ばし", "引き寄せ", "位置入れ替え"]}]
+    },
+    {
+        "id": "titles",
+        "output": "titles.json",
+        "kind": "text",
+        "blocks": [{"texts": ["握手は心の中だけで", "青い屋根の宿", "夜明けの約束"]}]
+    }
+]

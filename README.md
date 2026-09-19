@@ -1,73 +1,54 @@
-# Game Translation Workflow
+# 少女艺术绮谭翻译
 
-《少女艺术绮谭》的简中翻译项目，使用 Codex 处理名称、剧情（含标题）和 masterdata，支持更换模型后端、接入其他游戏和多语言翻译。游戏插件：[GCMod](https://github.com/anosu/GCMod)。
+使用 Agent 翻译名称、剧情和 masterdata，输出供 [GCMod](https://github.com/anosu/GCMod) 使用的原文到译文字典。框架来自 [game-translation-template](https://github.com/anosu/game-translation-template)，游戏获取和解析逻辑独立维护。
 
-## 开始使用
+## 从这里开始
 
-需要 Python 3.14+、[uv](https://docs.astral.sh/uv/) 和 Node.js 22.18+ 或 24+。
+1. [game/translation.toml](game/translation.toml)：语言、模型后端和获取选项。默认使用 `deepseek-flash`，密钥环境变量为 `DEEPSEEK_API_KEY`。
+2. [game/styles/zh-Hans.md](game/styles/zh-Hans.md)：游戏翻译风格；[game/glossary/zh-Hans.json](game/glossary/zh-Hans.json)：补充术语与说明。
+3. [game/README.md](game/README.md)：原文选择、交付格式、历史检查与旧工作流迁移。
+
+需要 Python 3.14+、uv 和 Node.js 22.18+ 或 24+：
 
 ```sh
 uv sync --frozen --extra girlscreation
 npm ci
+npm run workflow -- config
+npm run workflow -- sync
+npm run workflow -- plan
 ```
 
-在 [translation.toml](translation.toml) 中选择后端和模型，并设置 `api_key_env` 指定的环境变量；当前配置使用 `DEEPSEEK_API_KEY`。后端须支持 Responses API 和工具调用。
-
-先查看配置和少量待办，再执行翻译、合并与检查：
+`sync` 获取游戏资料，默认只下载所选语言中缺少译文文件的剧情；masterdata 按 CDN 版本缓存。`plan` 只读本地不可变快照，不联网、不调用模型。准备好密钥后执行：
 
 ```sh
-npm run workflow -- config
-npm run workflow -- update --dry-run --limit 20
 npm run workflow -- translate
-npm run workflow -- merge
+npm run workflow -- publish
 npm run workflow -- check
 ```
 
-日常更新运行 `npm run workflow -- update`：只获取缺少译文文件的剧情，并从中提取 names；masterdata 每次按表和字段比对原文值，补齐没有译文的键。没有待补内容时不生成翻译任务，也不重建 manifest。
+`update` 连续执行以上五个阶段。中断后重跑 `translate` 可恢复适用答案；发布中断后重跑 `publish`。具体用法见[使用手册](docs/usage.md)。
 
-已有剧情的漏译和原文变化通过 `update --check-existing` 完整检查，可加 `--dry-run` 先查看待办。不同译法和旧输出列入 `prepare-report.json`，保留已有译文；缺失位置的复用译法有歧义时，报告为阻塞条目，需人工处理。
+## 目录
 
-## 配置与选择范围
+```text
+game/                    游戏配置、字段清单、风格与术语
+adapters/girlscreation/   CDN 获取、解密、Unity 解析、Resource 提取
+workflow/                通用规划、Agent 会话、校验和发布
+translations/            既有交付字典及 manifest
+docs/                    框架契约与示例
+tests/                   框架、游戏适配器和部署回归测试
+```
 
-相对路径以配置文件目录为基准。`targets` 声明目标语言，默认全部处理；可用 `--config PATH` 选择配置，用 `--target zh-Hans` 选择语言，多个语言可用逗号分隔。
-
-- 后端优先级：`--backend` > `TRANSLATION_BACKEND` > 目标的 `backend` > 项目的 `backend`。
-- 模型优先级：`--model` > `TRANSLATION_MODEL` > 后端的 `model`。
-- 目标可指定 `translations`、`glossary`、`work` 路径，以及 `style` 风格文件和 `rules` 校验规则。
-- 后端的 `codex.effort` 指定推理强度；`codex.context_window` 指定 token 预算，需与所选模型容量匹配。
-
-`--limit` 仅用于 `prepare` 和 `update`，限制每种语言的计划条目数。新剧情必须整份纳入计划，额度不足时需提高上限，避免发布半份文件。`translate` 执行已有计划；`--dry-run` 只获取和规划，不调用模型。各命令参数可用 `--help` 查看，例如 `npm run workflow -- update --help`。
-
-## 维护与恢复
-
-| 需求 | 命令（接在 `npm run workflow --` 后） |
-| --- | --- |
-| 查看进度与下一步 | `status` |
-| 查看汇总 | `summary` |
-| 清理过期的非当前任务缓存 | `cache --prune --days 30` |
-
-翻译中断后可重跑 `translate`，合并中断后可重跑 `merge`。发生人工修改冲突时先核对文件。搬迁工作目录后，用 `setup --config PATH --target zh-Hans` 重新绑定路径，原文快照需保持一致。
-
-译文和[术语表](glossary/README.md) 需要提交；`.cache/` 保存任务、答案和运行进度。风格或术语变化可能使待办缓存失效，已有译文不会自动重翻。
-
-Husky 会在提交前根据暂存的配置和译文构建 manifest。`check` 检查交付结构、术语与 manifest；译文语义仍需审阅。
+名称以 `names.json` 及 master 中的角色名字段为准，不再复制到 glossary。剧情标题仍写入 `novels/<ID>.json`；master 保留表名、字段名以及 `[]`、`|` 后缀，兼容现有客户端。
 
 ## GitHub Actions
 
-在仓库 Secrets 中添加后端 `api_key_env` 对应的密钥，然后运行 [Update Translations](.github/workflows/update_translation.yml)。手动运行默认只规划，可勾选 `check_existing` 完整检查；每天北京时间 13:30 自动更新，周日同时完整检查。
+在仓库 Secrets 中添加 `DEEPSEEK_API_KEY`，运行 [Update Translations](.github/workflows/update_translation.yml)。默认 `plan_only=true`，同步并规划但不调用模型；关闭后实际翻译和发布。`source_ids` 可指定逗号分隔的剧情 ID，`check_existing` 由本游戏适配器解释。
 
-可通过运行参数选择配置、语言、后端、模型和条目上限，也可设置 `TRANSLATION_BACKEND`、`TRANSLATION_MODEL`、`TRANSLATION_LIMIT` 仓库变量。所有所选语言成功后才统一发布。跨仓库调用可使用 `workflow_call` 和 `secrets: inherit`。
+保留原有每天北京时间 13:30 的自动更新及周日历史检查。完整历史检查会重新下载已有剧情，成本较高；日常更新无需开启。`limit` 只限制仍需翻译的资源数，已完成资源不占额度，也不限制下载；共享一个输出文件的资源必须一起纳入。
 
-## 静态服务
+## 静态服务与开发
 
-`npm start` 将同级 `translations/` 映射到 `/translations/`，端口由 `PORT` 设置，默认为 12315。
+`npm start` 将 `translations/` 映射到 `/translations/`，端口默认 12315，可用 `PORT` 覆盖。现有 Vercel 入口、路径转发和翻译文件打包配置保持适用。独立部署只需 `app.ts`、`package.json`、`package-lock.json` 和 `translations/`，执行 `npm ci --omit=dev --ignore-scripts` 后启动。
 
-独立部署只需 Node.js：复制 `app.ts`、`package.json`、`package-lock.json` 和 `translations/`，运行 `npm ci --omit=dev --ignore-scripts` 后启动。自定义目录中的翻译产物需放入服务的 `translations/`。
-
-## 扩展与开发
-
-接入其他游戏可参考 [双语言 JSON 示例](examples/portable/translation.toml) 和[适配器文档](docs/adapters.md)。通用 JSON 适配器只需 `uv sync --frozen`，无需安装本游戏的可选依赖。
-
-开发检查：`npm test`、`npm run typecheck`、`npm run lint`。
-
-参考：[架构](docs/workflow-design.md) · [领域用语](CONTEXT.md) · [翻译评估样例](examples/evaluation/README.md)。
+开发检查：`npm test`、`npm run typecheck`、`npm run lint`、`npm run check:translations`。测试使用本地资料和模拟 CDN，不抓取全游戏，不调用付费模型。

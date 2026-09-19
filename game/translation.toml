@@ -1,0 +1,39 @@
+schema_version = 1
+
+[project]
+id = "girlscreation"
+name = "少女艺术绮谭"
+source_language = "ja"
+adapter = "adapters.girlscreation"
+backend = "deepseek"
+cache = "../.cache/translation"
+
+[adapter]
+master_fields = "master-fields.json"
+check_existing = false
+# Optional: import a previously parsed source directory without contacting the CDN.
+# input = "../.cache/translation/girlscreation/sources"
+
+[backends.deepseek]
+base_url = "https://api.deepseek.com"
+api_key_env = "DEEPSEEK_API_KEY"
+model = "deepseek-flash"
+
+[backends.deepseek.codex]
+effort = "high"
+context_window = 1_000_000
+
+[backends.openai]
+base_url = "https://api.openai.com/v1"
+api_key_env = "OPENAI_API_KEY"
+
+[targets.zh-Hans]
+name = "简体中文"
+translations = "../translations/zh-Hans"
+style = "styles/zh-Hans.md"
+rules = "rules.json"
+term_sources = [
+    { file = "names.json" },
+    { file = "master.json", path = ["mUnits", "ml_name[]"] },
+    { file = "master.json", path = ["mSubunits", "ml_name[]"] },
+]

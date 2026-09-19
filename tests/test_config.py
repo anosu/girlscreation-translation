@@ -5,15 +5,14 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from scripts.codex import configure_action
-from scripts.config import load_project
-from scripts.translate import codex_command
+from workflow.config import load_project
+from workflow.translate import codex_command
 
 CONFIG = """schema_version = 1
 [project]
 id = "test"
 source_language = "en"
-adapter = "scripts.games.json_file"
+adapter = "adapters.json_file"
 backend = "alpha"
 [backends.alpha]
 base_url = "https://example.invalid/v1"
@@ -98,7 +97,7 @@ class ConfigTests(unittest.TestCase):
             with self.subTest(codes=codes), self.assertRaises(ValueError):
                 project.select(codes)
 
-    def test_context_budget_is_optional_strict_and_shared_by_cli_and_action(self):
+    def test_context_budget_is_optional_strict_and_used_by_cli(self):
         def configured(value):
             return CONFIG.replace(
                 "[backends.beta]",
@@ -111,18 +110,13 @@ class ConfigTests(unittest.TestCase):
         local = tomllib.loads(
             "\n".join(command[i + 1] for i, arg in enumerate(command) if arg == "-c")
         )
-        home = self.file.parent / "codex-home"
-        configure_action(home, backend)
-        action = tomllib.loads((home / "config.toml").read_text(encoding="utf-8"))
         for key, value in {
             "model_context_window": 1_000_000,
             "model_reasoning_effort": "high",
             "model_reasoning_summary": "none",
         }.items():
             self.assertEqual(local[key], value)
-            self.assertEqual(action[key], value)
         self.assertNotIn("model_catalog_json", local)
-        self.assertNotIn("model_catalog_json", action)
         self.assertIsNone(project.backend(project.targets["es"]).context_window)
         for value in ("0", "-1", "true", '"1000000"', "1.5"):
             with (

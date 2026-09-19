@@ -2,15 +2,14 @@
 
 import tempfile
 import unittest
-from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from scripts.config import load_project
-from scripts.games.girlscreation.fetch import fetch_sources
-from scripts.prepare import source_catalog
-from scripts.utils import read_json, write_json
+from adapters.girlscreation import collect
+from adapters.girlscreation.fetch import fetch_sources
+from workflow.adapters import CollectRequest
+from workflow.utils import read_json, write_json
 
 
 class FetchTests(unittest.TestCase):
@@ -36,17 +35,17 @@ class FetchTests(unittest.TestCase):
                 return SimpleNamespace(content=Path(path).stem.encode())
 
             with (
-                patch("scripts.games.girlscreation.fetch.request", side_effect=request),
+                patch("adapters.girlscreation.fetch.request", side_effect=request),
                 patch(
-                    "scripts.games.girlscreation.fetch.text_assets",
+                    "adapters.girlscreation.fetch.text_assets",
                     return_value={"mItems": b"master"},
                 ),
                 patch(
-                    "scripts.games.girlscreation.fetch.decrypt_master_text",
+                    "adapters.girlscreation.fetch.decrypt_master_text",
                     return_value=[],
                 ),
                 patch(
-                    "scripts.games.girlscreation.fetch.parse_bundle",
+                    "adapters.girlscreation.fetch.parse_bundle",
                     side_effect=lambda raw: (
                         raw.decode(),
                         "title,題名,\nmessage,話者,本文,",
@@ -95,10 +94,8 @@ class FetchTests(unittest.TestCase):
                 return content.decode(), "title,題名,\nmessage,話者,本文,"
 
             with (
-                patch("scripts.games.girlscreation.fetch.request", side_effect=request),
-                patch(
-                    "scripts.games.girlscreation.fetch.parse_bundle", side_effect=parse
-                ),
+                patch("adapters.girlscreation.fetch.request", side_effect=request),
+                patch("adapters.girlscreation.fetch.parse_bundle", side_effect=parse),
             ):
                 fetch_sources(cache)
                 self.assertEqual(len(downloads), 2)
@@ -114,17 +111,17 @@ class FetchTests(unittest.TestCase):
                 self.assertIn("12346", downloads[-1])
             self.assertFalse((cache / ".fetching").exists())
 
-    def test_failed_fetch_blocks_prepare(self):
+    def test_failed_fetch_blocks_offline_import(self):
         with tempfile.TemporaryDirectory() as temporary:
             cache = Path(temporary)
             with patch(
-                "scripts.games.girlscreation.fetch.request",
+                "adapters.girlscreation.fetch.request",
                 side_effect=ValueError("download failed"),
             ):
                 with self.assertRaisesRegex(ValueError, "download failed"):
                     fetch_sources(cache)
             with self.assertRaisesRegex(ValueError, "interrupted"):
-                source_catalog(replace(load_project(), sources=cache))
+                list(collect(CollectRequest(cache, {"input": "."}, cache, None, {})))
 
 
 if __name__ == "__main__":

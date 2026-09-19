@@ -71,3 +71,7 @@ decompile
 
 # Legacy local checkout (not used by the translation pipeline)
 GalTransl/
+
+# Local framework example outputs
+/docs/examples/portable/generated/
+/docs/examples/dictionaries/generated/

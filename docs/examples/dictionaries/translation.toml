@@ -1,0 +1,19 @@
+schema_version = 1
+
+[project]
+id = "vn-dictionaries"
+source_language = "ja"
+adapter = "json"
+backend = "compatible"
+
+[adapter]
+input = "resources.json"
+
+[backends.compatible]
+base_url = "https://api.openai.com/v1"
+api_key_env = "MODEL_API_KEY"
+# Configure model here or pass --model before translating.
+
+[targets.zh-Hans]
+translations = "generated/zh-Hans"
+term_sources = [{ file = "names.json" }]
