@@ -7,7 +7,7 @@ from pydantic import Field, field_validator, model_validator
 from workflow.config import Rules, StrictModel, TermSource, Text
 from workflow.dictionaries import namespace_path, output_path, validate_locations
 
-PLAN_VERSION = 10
+PLAN_VERSION = 11
 
 
 class Task(StrictModel):
@@ -39,7 +39,7 @@ class Task(StrictModel):
 
 
 class Plan(StrictModel):
-    version: Literal[10]
+    version: Literal[11]
     id: Text
     project: Text
     project_name: Text
@@ -51,6 +51,7 @@ class Plan(StrictModel):
     source_version: Text
     source_files: list[str]
     resources: dict[str, str]
+    packets: dict[str, list[str]]
     term_dictionaries: list[TermSource] = Field(default_factory=list)
     term_sources: list[TermSource] = Field(default_factory=list)
     tasks: list[Task]
@@ -70,6 +71,15 @@ class Plan(StrictModel):
         keys = [task.key for task in self.tasks]
         if len(set(ids)) != len(ids) or len(set(keys)) != len(keys):
             raise ValueError("Duplicate task or output/source key in plan")
+        if {task.group for task in self.tasks} != set(self.packets):
+            raise ValueError("Every task must belong to a planned packet")
+        for members in self.packets.values():
+            if (
+                not members
+                or len(set(members)) != len(members)
+                or set(members) - self.resources.keys()
+            ):
+                raise ValueError("Invalid packet resources")
         validate_locations(
             [
                 *((task.output, task.path) for task in self.tasks),
@@ -115,7 +125,7 @@ type TermIndex = dict[str, list[ResolvedTerm]]
 
 
 class Results(Submission):
-    version: Literal[10]
+    version: Literal[11]
     plan: Text
     project: Text
     language: Text

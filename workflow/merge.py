@@ -123,7 +123,11 @@ def prepare_update(project: Project, target: Target) -> Update:
     resolved = resolve_glossary(glossary_after, names)
     for task in plan.tasks:
         canonical = term_for(resolved, task.source, task.category)
-        if canonical is not None and values[task.id] != canonical.translation:
+        if (
+            task.term
+            and canonical is not None
+            and values[task.id] != canonical.translation
+        ):
             raise ValueError(
                 f"Translation conflicts with established term: {task.source}"
             )

@@ -103,6 +103,7 @@ class Session:
             f"# Translation job: {self.plan.project_name}\nSource language: {self.plan.source_language}\n"
             f"Target language: {self.plan.language} ({self.plan.language_name})\n\n{instructions}\n\n"
             f"Work directory (pass --work to every agent command):\n{self.work}\n"
+            f"\n# Translation style\n{self.plan.style}\n"
         )
         (self.work / "agent-prompt.md").write_text(prompt, encoding="utf-8")
         return config
@@ -179,7 +180,7 @@ class Session:
         for key, value in values.items():
             task = self.tasks[key]
             term = term_for(terms, task.source, task.category)
-            if term and value != term.translation:
+            if task.term and term and value != term.translation:
                 raise ValueError(
                     f"Use the established term for {task.source}: {term.translation}"
                 )
@@ -201,7 +202,7 @@ class Session:
         }
 
     def packet_tasks(self, packet: str) -> list[Task]:
-        for group in dict.fromkeys(task.group for task in self.plan.tasks):
+        for group in self.plan.packets:
             if digest([self.plan.id, group]) == packet:
                 return [task for task in self.plan.tasks if task.group == group]
         raise ValueError("Unknown or stale packet; run next again")
@@ -210,17 +211,19 @@ class Session:
         pending = [task for task in self.plan.tasks if task.id not in self._answers]
         if not pending:
             return {"remaining": 0, "next": None}
-        group = pending[0].group
+        group = next(
+            group
+            for group in self.plan.packets
+            if any(task.group == group for task in pending)
+        )
         packet = digest([self.plan.id, group])
         tasks = self.packet_tasks(packet)
-        materials = {reference for task in tasks for reference in task.references}
-        resources = [
-            key for key, file in self.plan.resources.items() if file in materials
-        ]
-        rendered = self.read_resource(group, packet=packet)
+        resources = self.plan.packets[group]
+        rendered = self.read_resource(resources[0], packet=packet)
         return {
             "packet": packet,
-            "resource": group,
+            "resource": resources[0],
+            "resources": resources,
             "related_resources": resources,
             "pending": [
                 str(i)
@@ -268,6 +271,9 @@ class Session:
         lines.append(json.dumps({"columns": columns}, ensure_ascii=False))
         previous_block = None
         for occurrence in resource.occurrences():
+            address = (resource.output, tuple(resource.path), occurrence["source"])
+            if resource.kind == "text" and packet and address not in numbers:
+                continue
             block = occurrence.get("block")
             if block is not None and block != previous_block:
                 context = resource.blocks[block - 1].context
@@ -309,6 +315,7 @@ class Session:
         terms = list(terms_payload(relevant).items())
         return {
             "resource": resource.id,
+            "view": "packet" if resource.kind == "text" and packet else "full",
             "offset": offset,
             "text": text[offset : offset + limit],
             "next_offset": offset + limit if offset + limit < len(text) else None,
@@ -398,6 +405,10 @@ class Session:
         return self.submit({"translations": incoming})
 
     def propose_packet(self, packet: str, values: list[dict]) -> dict:
+        if not isinstance(values, list) or any(
+            not isinstance(item, dict) for item in values
+        ):
+            raise ValueError("Term proposals must be a JSON array of objects")
         tasks = {str(i): task for i, task in enumerate(self.packet_tasks(packet), 1)}
         proposals = []
         for item in values:
@@ -514,5 +525,4 @@ def setup_session(work: Path) -> Session:
             ).model_dump(),
         )
         session._answers.update(incoming)
-    session.next_group()
     return session

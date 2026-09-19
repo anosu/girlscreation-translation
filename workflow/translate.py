@@ -1,16 +1,18 @@
 """Local entry point for the same tool-using agent run by codex-action in CI."""
 
 import hashlib
+import json
 import os
 import shutil
 import signal
 import subprocess
+import time
 from pathlib import Path
 from typing import TextIO
 
 from workflow.codex import overrides, settings
 from workflow.config import ROOT, Backend
-from workflow.prepare import runtime_paths
+from workflow.prepare import read_plan, runtime_paths
 from workflow.session import Session, setup_session
 
 
@@ -34,7 +36,8 @@ def protected_state(work: Path) -> dict[str, str]:
             ".github",
         )
     ]
-    for directory in [*directories, paths["translations"], paths["sources"]]:
+    files.update(paths["sources"] / file for file in read_plan(work).source_files)
+    for directory in [*directories, paths["translations"]]:
         if directory.exists():
             files.update(
                 path
@@ -153,12 +156,17 @@ def translate_plan(
         command = codex_command(backend, work)
         prompt = (work / "agent-prompt.md").read_text(encoding="utf-8")
         prompt += (
-            f"\nAssigned packet: {packet['packet']}\nResource: {packet['resource']}\n"
+            f"\nAssigned packet: {packet['packet']}\n"
+            f"Initial material (first resource page; continue reading the listed resources as needed):\n{json.dumps(packet, ensure_ascii=False)}\n"
         )
         log_path = work / "agent.log"
         if log_path.exists() and log_path.stat().st_size > 10 * 1024 * 1024:
             log_path.replace(work / "agent.previous.log")
-        print(f"Running translation agent; log: {log_path}", flush=True)
+        print(
+            f"Running translation agent; {len(packet['pending'])} pending keys, {len(packet['resources'])} resources; log: {log_path}",
+            flush=True,
+        )
+        started = time.monotonic()
         before = protected_state(work)
         try:
             with log_path.open("a", encoding="utf-8") as log:
@@ -178,4 +186,8 @@ def translate_plan(
                 )
         session.refresh_answers()
         session.finish_packet(packet["packet"])
+        print(
+            f"Packet complete in {time.monotonic() - started:.1f}s; {session.status()['remaining']} keys remain",
+            flush=True,
+        )
     session.finalize()

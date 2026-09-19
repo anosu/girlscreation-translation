@@ -254,7 +254,7 @@ class ResourceWorkflowTests(unittest.TestCase):
         self.assertEqual(len(plan.tasks), 2)
         self.assertNotEqual(plan.tasks[0].id, plan.tasks[1].id)
 
-    def test_later_packet_reads_accepted_shared_source_as_context(self):
+    def test_related_resource_reads_accepted_shared_source_as_context(self):
         write_json(
             self.input,
             [
@@ -278,9 +278,12 @@ class ResourceWorkflowTests(unittest.TestCase):
         first = session.next_group()
         session.submit_packet(first["packet"], {"1": "共同"})
         second = session.next_group()
-        self.assertEqual(second["resource"], "second")
-        self.assertEqual(second["pending"], ["1"])
-        self.assertIn("共同", second["page"]["text"])
+        self.assertEqual(second["packet"], first["packet"])
+        self.assertEqual(second["pending"], ["2"])
+        self.assertIn("second", second["resources"])
+        self.assertIn(
+            "共同", session.read_resource("second", packet=second["packet"])["text"]
+        )
 
     def test_contradictory_shared_source_rules_are_rejected(self):
         write_json(

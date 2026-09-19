@@ -2,10 +2,12 @@
 
 import argparse
 import json
+import sys
 from pathlib import Path
+from typing import Any
 
 from workflow.session import Session
-from workflow.utils import read_json
+from workflow.utils import read_json, unique_object
 
 
 def argument_parser():
@@ -27,7 +29,9 @@ def argument_parser():
         if command in {"submit", "revise", "propose", "finish"}:
             sub.add_argument("--packet", required=True)
         if command in {"submit", "revise", "propose"}:
-            sub.add_argument("file", type=Path)
+            sub.add_argument(
+                "file", type=Path, help="JSON file, or - to read standard input"
+            )
         if command == "read":
             sub.add_argument("resource")
             sub.add_argument("--packet")
@@ -44,6 +48,13 @@ def main():
     args = parser.parse_args()
     try:
         session = Session(args.work)
+        payload: Any = None
+        if args.command in {"submit", "revise", "propose"}:
+            payload = (
+                json.loads(sys.stdin.read(), object_pairs_hook=unique_object)
+                if str(args.file) == "-"
+                else read_json(args.file)
+            )
         if args.command == "next":
             result = session.next_group()
         elif args.command == "read":
@@ -53,11 +64,11 @@ def main():
         elif args.command == "search":
             result = session.search(args.query, args.offset)
         elif args.command == "submit":
-            result = session.submit_packet(args.packet, read_json(args.file))
+            result = session.submit_packet(args.packet, payload)
         elif args.command == "revise":
-            result = session.revise_packet(args.packet, read_json(args.file))
+            result = session.revise_packet(args.packet, payload)
         elif args.command == "propose":
-            result = session.propose_packet(args.packet, read_json(args.file))
+            result = session.propose_packet(args.packet, payload)
         elif args.command == "finish":
             result = session.finish_packet(args.packet)
         elif args.command == "status":

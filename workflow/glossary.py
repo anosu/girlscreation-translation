@@ -194,7 +194,7 @@ def apply_proposals(
     for key, translated in values.items():
         task = tasks[key]
         term = term_for(known, task.source, task.category)
-        if term and translated != term.translation:
+        if task.term and term and translated != term.translation:
             raise ValueError(
                 f"Term disagrees with an accepted translation: {task.source}"
             )

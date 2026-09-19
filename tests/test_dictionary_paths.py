@@ -153,7 +153,7 @@ class DictionaryPathTests(unittest.TestCase):
         self.assertEqual(merge_results(self.project, self.target), 0)
         self.assertEqual(prepare_tasks(self.project, self.target).tasks, [])
 
-    def test_same_source_in_different_tables_has_independent_packets_and_values(self):
+    def test_same_source_in_different_tables_has_independent_numbers_and_values(self):
         resources = [
             text_resource("one", "master.json", ["table1", "name"], ["共通"]),
             text_resource("two", "master.json", ["table2", "ml_name[]"], ["共通"]),
@@ -165,9 +165,12 @@ class DictionaryPathTests(unittest.TestCase):
         first = session.next_group()
         session.submit_packet(first["packet"], {"1": "译法甲"})
         second = session.next_group()
-        self.assertEqual(second["pending"], ["1"])
-        self.assertNotIn("译法甲", second["page"]["text"])
-        session.submit_packet(second["packet"], {"1": "译法乙"})
+        self.assertEqual(second["packet"], first["packet"])
+        self.assertEqual(second["pending"], ["2"])
+        self.assertNotIn(
+            "译法甲", session.read_resource("two", packet=second["packet"])["text"]
+        )
+        session.submit_packet(second["packet"], {"2": "译法乙"})
         session.finalize()
         merge_results(self.project, self.target)
         self.assertEqual(
