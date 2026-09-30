@@ -20,7 +20,7 @@ from pydantic import (
 
 from workflow.dictionaries import namespace_path, output_path, validate_locations
 from workflow.utils import read_json
-from workflow.version import SOURCE_CACHE_DIR, WORK_CACHE_DIR, ConfigSchemaVersion
+from workflow.version import CONFIG_SCHEMA_VERSION, SOURCE_CACHE_DIR, WORK_CACHE_DIR
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = ROOT / "game/translation.toml"
@@ -114,7 +114,14 @@ class ProjectSettings(StrictModel):
 
 
 class Configuration(StrictModel):
-    schema_version: ConfigSchemaVersion
+    schema_version: Annotated[
+        int,
+        Field(
+            strict=True,
+            ge=CONFIG_SCHEMA_VERSION,
+            le=CONFIG_SCHEMA_VERSION,
+        ),
+    ]
     project: ProjectSettings
     adapter: dict = Field(default_factory=dict)
     backends: dict[Identifier, BackendSettings] = Field(default_factory=dict)

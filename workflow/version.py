@@ -2,11 +2,10 @@
 
 from typing import Final, Literal, TypeAlias
 
-ConfigSchemaVersion: TypeAlias = Literal[1]
 SnapshotSchemaVersion: TypeAlias = Literal[1]
 PlanVersion: TypeAlias = Literal[12]
 
-CONFIG_SCHEMA_VERSION: Final[ConfigSchemaVersion] = 1
+CONFIG_SCHEMA_VERSION: Final[int] = 1
 SNAPSHOT_SCHEMA_VERSION: Final[SnapshotSchemaVersion] = 1
 PLAN_VERSION: Final[PlanVersion] = 12
 
