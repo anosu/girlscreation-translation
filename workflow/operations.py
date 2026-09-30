@@ -103,11 +103,11 @@ def run_summary(project: Project, targets: list[Target]) -> str:
             )
         if progress.get("reason"):
             lines.extend(["", f"{target.code}: {progress['reason']}"])
-        if "packets" in report:
+        if "windows" in report:
             lines.extend(
                 [
                     "",
-                    f"{target.code}: {report['packets']} reading windows for {report.get('resource_packets', 0)} resources with tasks; one resumable agent session consumes the pending windows.",
+                    f"{target.code}: {report['windows']} reading windows for {report.get('resource_windows', 0)} resources with tasks; one resumable agent session consumes the pending windows.",
                 ]
             )
     lines.extend(

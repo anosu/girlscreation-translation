@@ -27,14 +27,14 @@ def argument_parser():
         sub = commands.add_parser(command)
         sub.add_argument("--work", type=Path, required=True)
         if command in {"submit", "revise", "propose", "finish"}:
-            sub.add_argument("--packet", required=True)
+            sub.add_argument("--window", required=True)
         if command in {"submit", "revise", "propose"}:
             sub.add_argument(
                 "file", type=Path, help="JSON file, or - to read standard input"
             )
         if command == "read":
             sub.add_argument("resource")
-            sub.add_argument("--packet")
+            sub.add_argument("--window")
             sub.add_argument("--offset", type=int, default=0)
             sub.add_argument("--limit", type=int, default=12000)
         if command == "search":
@@ -56,21 +56,21 @@ def main():
                 else read_json(args.file)
             )
         if args.command == "next":
-            result = session.next_group()
+            result = session.next_window()
         elif args.command == "read":
             result = session.read_resource(
-                args.resource, packet=args.packet, offset=args.offset, limit=args.limit
+                args.resource, window=args.window, offset=args.offset, limit=args.limit
             )
         elif args.command == "search":
             result = session.search(args.query, args.offset)
         elif args.command == "submit":
-            result = session.submit_packet(args.packet, payload)
+            result = session.submit_window(args.window, payload)
         elif args.command == "revise":
-            result = session.revise_packet(args.packet, payload)
+            result = session.revise_window(args.window, payload)
         elif args.command == "propose":
-            result = session.propose_packet(args.packet, payload)
+            result = session.propose_window(args.window, payload)
         elif args.command == "finish":
-            result = session.finish_packet(args.packet)
+            result = session.finish_window(args.window)
         elif args.command == "status":
             result = session.status()
         else:

@@ -200,10 +200,10 @@ class CodexIntegrationTests(unittest.TestCase):
                 "import sys,json\nfrom pathlib import Path\nsys.path.insert(0,"
                 + repr(str(ROOT))
                 + ")\n"
-                "from workflow.session import Session\ns=Session(Path(sys.argv[1]))\npacket=s.next_group()\n"
-                "context=s.read_resource(packet['resource'],packet=packet['packet'])\n(s.work/'context-used.json').write_text(json.dumps(context),encoding='utf-8')\n"
-                "print(s.submit_packet(packet['packet'],{'1':'测试译文{0}'}))\n"
-                "print(s.finish_packet(packet['packet']))\n",
+                "from workflow.session import Session\ns=Session(Path(sys.argv[1]))\nwindow=s.next_window()\n"
+                "context=s.read_resource(window['resource'],window=window['window'])\n(s.work/'context-used.json').write_text(json.dumps(context),encoding='utf-8')\n"
+                "print(s.submit_window(window['window'],{'1':'测试译文{0}'}))\n"
+                "print(s.finish_window(window['window']))\n",
                 encoding="utf-8",
             )
             argv = [sys.executable, str(helper), str(work)]

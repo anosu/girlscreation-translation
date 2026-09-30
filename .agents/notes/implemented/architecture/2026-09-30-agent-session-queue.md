@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-The workflow used one model process for every packet. Packet size, recovery
+The workflow used one model process for every window. Window size, recovery
 checkpoint, and model session lifetime were the same concept, so a project
 with many short stories paid the prompt, tool startup, and style context cost
 dozens of times.
@@ -21,7 +21,7 @@ tasks or 32,000 source characters.
 
 ## Alternatives considered
 
-Keeping one Agent session per packet would isolate failures, but repeats the
+Keeping one Agent session per window would isolate failures, but repeats the
 largest fixed costs and was the observed source of poor throughput. A
 permanent service or parallel workers would add coordination and write-conflict
 complexity without improving this single-target serial workflow.
@@ -30,6 +30,6 @@ complexity without improving this single-target serial workflow.
 
 Large jobs use one model startup per target and fewer repeated tool calls while
 retaining durable recovery. A very long session may still hit model context or
-runtime limits; the existing answer files make reruns safe. The packet field
+runtime limits; the existing answer files make reruns safe. The window field
 remains an internal window identifier for validation and is not an Agent
 session identifier.

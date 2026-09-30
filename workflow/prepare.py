@@ -11,10 +11,10 @@ from workflow.dictionaries import (
 )
 from workflow.glossary import project_terms, resolve_glossary, term_for
 from workflow.models import PLAN_VERSION, Plan, Task
-from workflow.packets import assign_packets
 from workflow.snapshot import read_resource, read_snapshot
 from workflow.utils import digest, read_json, write_json
 from workflow.validate import combine_rules
+from workflow.windows import assign_windows
 
 
 def bind_runtime(work: Path, project: Project, target: Target) -> None:
@@ -135,7 +135,7 @@ def prepare_tasks(project: Project, target: Target, limit: int | None = None) ->
                 claims[key] = {
                     "source": source,
                     "category": "terms" if is_term(resource) else resource.kind,
-                    "group": resource.id,
+                    "window": resource.id,
                     "references": [],
                     "rules": rules,
                     "term": is_term(resource),
@@ -185,9 +185,9 @@ def prepare_tasks(project: Project, target: Target, limit: int | None = None) ->
         tasks.append(task)
     tasks.sort(key=lambda task: not task["term"])
     selected_files = {r.id: snapshot.resources[r.id] for r in selected}
-    resource_packets = len({task["group"] for task in tasks})
+    resource_windows = len({task["window"] for task in tasks})
     planned_tasks = [Task.model_validate(task) for task in tasks]
-    packets = assign_packets(planned_tasks, selected, selected_files)
+    windows = assign_windows(planned_tasks, selected, selected_files)
     plan = Plan.model_validate(
         {
             "version": PLAN_VERSION,
@@ -202,7 +202,7 @@ def prepare_tasks(project: Project, target: Target, limit: int | None = None) ->
             "source_version": version,
             "source_files": files,
             "resources": selected_files,
-            "packets": packets,
+            "windows": windows,
             "term_dictionaries": [
                 source.model_dump() for source in term_dictionaries.values()
             ],
@@ -224,8 +224,8 @@ def prepare_tasks(project: Project, target: Target, limit: int | None = None) ->
             "available_pending_resources": len(pending_resources),
             "available_tasks": len(pending_keys),
             "deferred_tasks": len(pending_keys) - len(tasks),
-            "packets": len(packets),
-            "resource_packets": resource_packets,
+            "windows": len(windows),
+            "resource_windows": resource_windows,
             "reuse_candidates": sum(t["reuse"] is not None for t in tasks),
             "source_scope": "selected resources only",
             "blocked_entries": 0,
@@ -234,6 +234,6 @@ def prepare_tasks(project: Project, target: Target, limit: int | None = None) ->
     print(
         f"{target.code}: {len(selected)}/{len(resources)} resources "
         f"({selected_pending}/{len(pending_resources)} pending), "
-        f"{len(tasks)}/{len(pending_keys)} missing dictionary keys selected, {len(packets)} reading windows"
+        f"{len(tasks)}/{len(pending_keys)} missing dictionary keys selected, {len(windows)} reading windows"
     )
     return plan

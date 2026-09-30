@@ -150,7 +150,7 @@ def translate_plan(
 ) -> None:
     """Run one durable agent session over the whole pending queue.
 
-    Packet boundaries only limit the material returned by ``next``. They do
+    Window boundaries only limit the material returned by ``next``. They do
     not restart the model session; accepted answers remain durable if the
     process later times out and the command is rerun.
     """
@@ -163,13 +163,13 @@ def translate_plan(
         raise ValueError(
             f"Set {backend.api_key_env} before running the translation agent"
         )
-    packet = session.next_group()
+    window = session.next_window()
     command = codex_command(backend, work)
     prompt = (work / "agent-prompt.md").read_text(encoding="utf-8")
     prompt += (
-        f"\nInitial assigned packet: {packet['packet']}\n"
-        "Initial material (all packet resources; continue paging only when a resource is truncated):\n"
-        f"{json.dumps(packet, ensure_ascii=False)}\n"
+        f"\nInitial assigned window: {window['window']}\n"
+        "Initial material (all window resources; continue paging only when a resource is truncated):\n"
+        f"{json.dumps(window, ensure_ascii=False)}\n"
     )
     log_path = work / "agent.log"
     if log_path.exists() and log_path.stat().st_size > 10 * 1024 * 1024:

@@ -1,4 +1,4 @@
-"""Build bounded translation packets from complete, context-bearing units."""
+"""Build bounded translation windows from complete, context-bearing units."""
 
 from collections.abc import Iterable
 
@@ -6,27 +6,23 @@ from workflow.models import Task
 from workflow.resources import Resource
 
 # These are source-material budgets, not model-token limits. A unit (a scene or
-# a table group) is never split merely to hit a packet boundary.
-PACKET_ITEMS = 480
-PACKET_CHARS = 32000
+# a table window) is never split merely to hit a window boundary.
+WINDOW_ITEMS = 480
+WINDOW_CHARS = 32000
 MAX_STORIES = 6
 
-# Compatibility aliases for tests and callers that used the old names.
-TEXT_ITEMS = PACKET_ITEMS
-TEXT_CHARS = PACKET_CHARS
 
-
-def assign_packets(
+def assign_windows(
     tasks: list[Task], resources: list[Resource], files: dict[str, str]
 ) -> dict[str, list[str]]:
-    """Assign tasks while keeping complete scenes and table groups together.
+    """Assign tasks while keeping complete scenes and table windows together.
 
     A dialogue resource and all auxiliary resources for the same output file
-    form one indivisible unit. Several such units may share a packet. Text
-    resources are grouped by output file and parent path, then split only when
-    one group itself exceeds the source-material budget.
+    form one indivisible unit. Several such units may share a window. Text
+    resources are windowed by output file and parent path, then split only when
+    one window itself exceeds the source-material budget.
     """
-    packets: dict[str, list[str]] = {}
+    windows: dict[str, list[str]] = {}
     by_id = {resource.id: resource for resource in resources}
     by_file = {file: key for key, file in files.items()}
     scenes = {resource.output for resource in resources if resource.kind == "dialogue"}
@@ -48,10 +44,10 @@ def assign_packets(
                 if resource.output == output:
                     members[resource.id] = None
         ordered = sorted(members, key=lambda key: by_id[key].kind != "dialogue")
-        group = f"packet-{len(packets) + 1}"
-        packets[group] = ordered
+        window = f"window-{len(windows) + 1}"
+        windows[window] = ordered
         for task in batch:
-            task.group = group
+            task.window = window
 
     def pack_units(units: list[list[Task]], *, max_units: int | None = None) -> None:
         batch: list[Task] = []
@@ -60,14 +56,14 @@ def assign_packets(
             unit_items, unit_chars = task_size(unit)
             # Keep a table together when it fits; split a large field by task only.
             if batch and (
-                items + unit_items > PACKET_ITEMS
-                or chars + unit_chars > PACKET_CHARS
+                items + unit_items > WINDOW_ITEMS
+                or chars + unit_chars > WINDOW_CHARS
                 or (max_units is not None and unit_count >= max_units)
             ):
                 add(batch)
                 batch, items, chars, unit_count = [], 0, 0, 0
-            # A single scene or table group remains whole even if it exceeds
-            # the advisory packet budget.
+            # A single scene or table window remains whole even if it exceeds
+            # the advisory window budget.
             batch.extend(unit)
             items += unit_items
             chars += unit_chars
@@ -79,12 +75,12 @@ def assign_packets(
     texts: dict[tuple[str, tuple[str, ...]], list[Task]] = {}
     for task in tasks:
         if task.term:
-            terms.setdefault(task.group, []).append(task)
+            terms.setdefault(task.window, []).append(task)
         elif task.output in scenes:
             stories.setdefault(task.output, []).append(task)
         else:
             texts.setdefault((task.output, tuple(task.path[:-1])), []).append(task)
-    # Process standard names first so later packets see accepted terminology.
+    # Process standard names first so later windows see accepted terminology.
     pack_units(list(terms.values()))
 
     # A story is the context unit. Titles and other resources sharing its output
@@ -102,12 +98,15 @@ def assign_packets(
     pack_units(story_units, max_units=MAX_STORIES)
 
     # Keep fields from the same table together when possible. Oversized fields
-    # are the only text groups split at individual task boundaries.
+    # are the only text windows split at individual task boundaries.
     text_units: list[list[Task]] = []
-    for group in texts.values():
-        if task_size(group)[0] <= PACKET_ITEMS and task_size(group)[1] <= PACKET_CHARS:
-            text_units.append(group)
+    for window in texts.values():
+        if (
+            task_size(window)[0] <= WINDOW_ITEMS
+            and task_size(window)[1] <= WINDOW_CHARS
+        ):
+            text_units.append(window)
         else:
-            text_units.extend([task] for task in group)
+            text_units.extend([task] for task in window)
     pack_units(text_units)
-    return packets
+    return windows

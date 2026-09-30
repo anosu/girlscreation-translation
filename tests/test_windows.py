@@ -11,12 +11,12 @@ from unittest.mock import patch
 from workflow.agent import main as agent_main
 from workflow.config import load_project
 from workflow.merge import merge_results
-from workflow.packets import TEXT_CHARS, TEXT_ITEMS
 from workflow.prepare import prepare_tasks
 from workflow.scaffold import create_project
 from workflow.session import setup_session
 from workflow.snapshot import sync_sources
 from workflow.utils import read_json, write_json
+from workflow.windows import WINDOW_CHARS, WINDOW_ITEMS
 
 
 def text(id, output, texts, path=None, **extra):
@@ -30,7 +30,7 @@ def text(id, output, texts, path=None, **extra):
     }
 
 
-class PacketTests(unittest.TestCase):
+class WindowTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -46,15 +46,15 @@ class PacketTests(unittest.TestCase):
 
     def finish(self, session):
         while session.status()["remaining"]:
-            packet = session.next_group()
-            session.submit_packet(
-                packet["packet"],
+            window = session.next_window()
+            session.submit_window(
+                window["window"],
                 {
                     str(i): "译" + task.source
-                    for i, task in enumerate(session.packet_tasks(packet["packet"]), 1)
+                    for i, task in enumerate(session.window_tasks(window["window"]), 1)
                 },
             )
-            session.finish_packet(packet["packet"])
+            session.finish_window(window["window"])
         session.finalize()
         merge_results(self.project, self.target)
 
@@ -80,13 +80,13 @@ class PacketTests(unittest.TestCase):
             ]
         )
         self.assertEqual(
-            list(plan.packets.values()),
+            list(plan.windows.values()),
             [["names"], ["story", "title"], ["items/name", "items/description", "ui"]],
         )
         report = read_json(self.target.work / "prepare-report.json")
-        self.assertEqual((report["packets"], report["resource_packets"]), (3, 6))
+        self.assertEqual((report["windows"], report["resource_windows"]), (3, 6))
         session = setup_session(self.target.work)
-        self.assertEqual(session.next_group()["resources"], ["names"])
+        self.assertEqual(session.next_window()["resources"], ["names"])
         self.finish(session)
         self.assertEqual(
             read_json(self.target.translations / "novels/1.json")["出会い"], "译出会い"
@@ -102,18 +102,18 @@ class PacketTests(unittest.TestCase):
                 "id": f"scene-{n}",
                 "output": f"novels/{n}.json",
                 "kind": "dialogue",
-                "lines": [[None, f"台詞{i}"] for i in range(TEXT_ITEMS + 5)],
+                "lines": [[None, f"台詞{i}"] for i in range(WINDOW_ITEMS + 5)],
             }
             for n in range(2)
         ]
         plan = self.plan(scenes)
-        self.assertEqual(len(plan.packets), 2)
+        self.assertEqual(len(plan.windows), 2)
         session = setup_session(self.target.work)
-        packet = session.next_group()
-        self.assertEqual(len(session.packet_tasks(packet["packet"])), TEXT_ITEMS + 5)
-        self.assertEqual(packet["resources"], ["scene-0"])
+        window = session.next_window()
+        self.assertEqual(len(session.window_tasks(window["window"])), WINDOW_ITEMS + 5)
+        self.assertEqual(window["resources"], ["scene-0"])
 
-    def test_short_scenes_share_packets_and_bootstrap_contains_each_resource(self):
+    def test_short_scenes_share_windows_and_bootstrap_contains_each_resource(self):
         resources = []
         for n in range(6):
             resources.append(
@@ -126,9 +126,9 @@ class PacketTests(unittest.TestCase):
             )
             resources.append(text(f"title-{n}", f"novels/{n}.json", [f"标题{n}"]))
         plan = self.plan(resources)
-        self.assertEqual(len(plan.packets), 1)
+        self.assertEqual(len(plan.windows), 1)
         self.assertEqual(
-            list(plan.packets.values()),
+            list(plan.windows.values()),
             [
                 [
                     "scene-0",
@@ -147,20 +147,20 @@ class PacketTests(unittest.TestCase):
             ],
         )
         session = setup_session(self.target.work)
-        packet = session.next_group()
-        self.assertIn("场景0台词0", packet["page"]["text"])
-        self.assertIn("场景4台词0", packet["page"]["text"])
-        self.assertIn("场景5台词0", packet["page"]["text"])
+        window = session.next_window()
+        self.assertIn("场景0台词0", window["page"]["text"])
+        self.assertIn("场景4台词0", window["page"]["text"])
+        self.assertIn("场景5台词0", window["page"]["text"])
 
     def test_long_table_splits_and_only_renders_current_batch_by_default(self):
-        rows = [f"項目{i:04d}" for i in range(TEXT_ITEMS * 2 + 1)]
+        rows = [f"項目{i:04d}" for i in range(WINDOW_ITEMS * 2 + 1)]
         plan = self.plan([text("items", "master.json", rows, ["mItems", "name"])])
-        self.assertEqual(len(plan.packets), 3)
+        self.assertEqual(len(plan.windows), 3)
         session = setup_session(self.target.work)
-        packet = session.next_group()
-        self.assertEqual(len(session.packet_tasks(packet["packet"])), TEXT_ITEMS)
-        self.assertIn(rows[0], packet["page"]["text"])
-        self.assertNotIn(rows[-1], packet["page"]["text"])
+        window = session.next_window()
+        self.assertEqual(len(session.window_tasks(window["window"])), WINDOW_ITEMS)
+        self.assertIn(rows[0], window["page"]["text"])
+        self.assertNotIn(rows[-1], window["page"]["text"])
         self.assertIn(rows[-1], session.read_resource("items", limit=64000)["text"])
         self.finish(session)
         self.assertEqual(
@@ -184,14 +184,14 @@ class PacketTests(unittest.TestCase):
                 text("title", "novels/1.json", ["再会"]),
             ]
         )
-        packet = setup_session(self.target.work).next_group()
-        self.assertEqual(packet["resources"], ["story", "title"])
-        self.assertIn("能见到你真好。", packet["page"]["text"])
+        window = setup_session(self.target.work).next_window()
+        self.assertEqual(window["resources"], ["story", "title"])
+        self.assertIn("能见到你真好。", window["page"]["text"])
 
     def test_text_batches_respect_source_size_as_well_as_item_count(self):
-        rows = [str(i) + "長" * (TEXT_CHARS // 2) for i in range(3)]
+        rows = [str(i) + "長" * (WINDOW_CHARS // 2) for i in range(3)]
         plan = self.plan([text("long", "ui.json", rows)])
-        self.assertEqual(len(plan.packets), 3)
+        self.assertEqual(len(plan.windows), 3)
 
     def test_explicit_required_translation_still_applies_to_ordinary_text(self):
         self.plan(
@@ -205,10 +205,10 @@ class PacketTests(unittest.TestCase):
             ]
         )
         session = setup_session(self.target.work)
-        packet = session.next_group()["packet"]
+        window = session.next_window()["window"]
         with self.assertRaisesRegex(ValueError, "canonical"):
-            session.submit_packet(packet, {"1": "启动"})
-        session.submit_packet(packet, {"1": "开始"})
+            session.submit_window(window, {"1": "启动"})
+        session.submit_window(window, {"1": "开始"})
 
     def test_ordinary_title_is_not_auto_filled_or_forced_to_a_character_name(self):
         write_json(self.target.translations / "names.json", {"同文": "角色名称"})
@@ -222,8 +222,8 @@ class PacketTests(unittest.TestCase):
         self.assertIsNone(plan.tasks[0].reuse)
         session = setup_session(self.target.work)
         self.assertEqual(session.status()["remaining"], 1)
-        packet = session.next_group()
-        session.submit_packet(packet["packet"], {"1": "剧情标题"})
+        window = session.next_window()
+        session.submit_window(window["window"], {"1": "剧情标题"})
         session.finalize()
         merge_results(self.project, self.target)
         self.assertEqual(
@@ -232,7 +232,7 @@ class PacketTests(unittest.TestCase):
 
     def test_submission_from_stdin_needs_no_draft_file(self):
         self.plan([text("ui", "ui.json", ["始める"])])
-        packet = setup_session(self.target.work).next_group()
+        window = setup_session(self.target.work).next_window()
         output = io.StringIO()
         with (
             patch(
@@ -241,8 +241,8 @@ class PacketTests(unittest.TestCase):
                     "agent",
                     "submit",
                     "-",
-                    "--packet",
-                    packet["packet"],
+                    "--window",
+                    window["window"],
                     "--work",
                     str(self.target.work),
                 ],

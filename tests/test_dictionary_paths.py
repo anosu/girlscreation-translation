@@ -89,15 +89,15 @@ class DictionaryPathTests(unittest.TestCase):
     def finish(self, values=None):
         session = setup_session(self.target.work)
         while session.status()["remaining"]:
-            packet = session.next_group()
+            window = session.next_window()
             payload = {}
-            for i, task in enumerate(session.packet_tasks(packet["packet"]), 1):
+            for i, task in enumerate(session.window_tasks(window["window"]), 1):
                 key = (task.output, (*task.path, task.source))
                 payload[str(i)] = (values or {}).get(
                     key, self.values.get(task.source, task.source)
                 )
-            session.submit_packet(packet["packet"], payload)
-            session.finish_packet(packet["packet"])
+            session.submit_window(window["window"], payload)
+            session.finish_window(window["window"])
         session.finalize()
         return session
 
@@ -116,11 +116,11 @@ class DictionaryPathTests(unittest.TestCase):
         plan = self.plan()
         self.assertNotIn("村人", [task.source for task in plan.tasks])
         session = setup_session(self.target.work)
-        first = session.next_group()
+        first = session.next_window()
         self.assertEqual(first["resource"], "names")
         self.assertEqual(first["pending"], ["1"])
-        session.submit_packet(first["packet"], {"1": "主人公"})
-        story = session.next_group()
+        session.submit_window(first["window"], {"1": "主人公"})
+        story = session.next_window()
         self.assertEqual(story["resource"], "story")
         self.assertEqual(story["page"]["terms"]["村人"][0]["translation"], "村民")
         self.assertEqual(story["page"]["terms"]["主人公"][0]["translation"], "主人公")
@@ -162,15 +162,15 @@ class DictionaryPathTests(unittest.TestCase):
         self.assertEqual(len(plan.tasks), 2)
         self.assertNotEqual(plan.tasks[0].id, plan.tasks[1].id)
         session = setup_session(self.target.work)
-        first = session.next_group()
-        session.submit_packet(first["packet"], {"1": "译法甲"})
-        second = session.next_group()
-        self.assertEqual(second["packet"], first["packet"])
+        first = session.next_window()
+        session.submit_window(first["window"], {"1": "译法甲"})
+        second = session.next_window()
+        self.assertEqual(second["window"], first["window"])
         self.assertEqual(second["pending"], ["2"])
         self.assertNotIn(
-            "译法甲", session.read_resource("two", packet=second["packet"])["text"]
+            "译法甲", session.read_resource("two", window=second["window"])["text"]
         )
-        session.submit_packet(second["packet"], {"2": "译法乙"})
+        session.submit_window(second["window"], {"2": "译法乙"})
         session.finalize()
         merge_results(self.project, self.target)
         self.assertEqual(
@@ -220,7 +220,7 @@ class DictionaryPathTests(unittest.TestCase):
         self.plan([self.resources[1]])
         session = setup_session(self.target.work)
         self.assertEqual(
-            session.next_group()["page"]["terms"]["村人"][0]["translation"], "村民"
+            session.next_window()["page"]["terms"]["村人"][0]["translation"], "村民"
         )
         write_json(self.target.translations / "names.json", {"村人": "村里的居民"})
         with self.assertRaisesRegex(ValueError, "terminology changed"):
@@ -228,7 +228,7 @@ class DictionaryPathTests(unittest.TestCase):
         prepare_tasks(self.project, self.target)
         resumed = setup_session(self.target.work)
         self.assertEqual(
-            resumed.next_group()["page"]["terms"]["村人"][0]["translation"],
+            resumed.next_window()["page"]["terms"]["村人"][0]["translation"],
             "村里的居民",
         )
         self.assertEqual(read_json(self.target.glossary), {})
@@ -238,7 +238,7 @@ class DictionaryPathTests(unittest.TestCase):
         write_json(self.target.glossary, {"村人": {"note": "普通角色称呼"}})
         self.plan([self.resources[1]])
         session = setup_session(self.target.work)
-        term = session.next_group()["page"]["terms"]["村人"][0]
+        term = session.next_window()["page"]["terms"]["村人"][0]
         self.assertEqual((term["translation"], term["note"]), ("村民", "普通角色称呼"))
         self.finish()
         merge_results(self.project, self.target)
@@ -248,10 +248,10 @@ class DictionaryPathTests(unittest.TestCase):
     def test_proposals_do_not_duplicate_canonical_name_values(self):
         self.plan([self.resources[0]])
         session = setup_session(self.target.work)
-        packet = session.next_group()["packet"]
-        session.submit_packet(packet, {"1": "村民", "2": "主人公"})
-        session.propose_packet(
-            packet,
+        window = session.next_window()["window"]
+        session.submit_window(window, {"1": "村民", "2": "主人公"})
+        session.propose_window(
+            window,
             [
                 {
                     "source": "村人",
@@ -277,7 +277,7 @@ class DictionaryPathTests(unittest.TestCase):
         self.plan([self.resources[1]])
         session = setup_session(self.target.work)
         self.assertEqual(
-            session.next_group()["page"]["terms"]["村人"][0]["translation"], "村民"
+            session.next_window()["page"]["terms"]["村人"][0]["translation"], "村民"
         )
 
     def test_conflicting_canonical_files_and_legacy_duplicate_glossary_fail(self):
@@ -398,8 +398,8 @@ class DictionaryPathTests(unittest.TestCase):
         second = {**first, "id": "two"}
         plan = self.plan([first, second])
         self.assertEqual(len(plan.tasks), 1)
-        packet = setup_session(self.target.work).next_group()
-        self.assertEqual(set(packet["related_resources"]), {"one", "two"})
+        window = setup_session(self.target.work).next_window()
+        self.assertEqual(set(window["related_resources"]), {"one", "two"})
 
     def test_invalid_path_types_and_term_source_files_are_rejected(self):
         for path in ([1], [""], [" "]):

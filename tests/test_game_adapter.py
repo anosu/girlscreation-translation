@@ -168,15 +168,15 @@ class GameAdapterTests(unittest.TestCase):
             "風が吹いた。": "风吹过。",
         }
         while session.status()["remaining"]:
-            packet = session.next_group()
-            session.submit_packet(
-                packet["packet"],
+            window = session.next_window()
+            session.submit_window(
+                window["window"],
                 {
                     str(i): translations.get(task.source, task.source)
-                    for i, task in enumerate(session.packet_tasks(packet["packet"]), 1)
+                    for i, task in enumerate(session.window_tasks(window["window"]), 1)
                 },
             )
-            session.finish_packet(packet["packet"])
+            session.finish_window(window["window"])
         session.finalize()
         merge_results(self.project, self.target)
         novel = read_json(self.target.translations / "novels/12345.json")

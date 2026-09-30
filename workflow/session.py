@@ -201,27 +201,27 @@ class Session:
             },
         }
 
-    def packet_tasks(self, packet: str) -> list[Task]:
-        for group in self.plan.packets:
-            if digest([self.plan.id, group]) == packet:
-                return [task for task in self.plan.tasks if task.group == group]
-        raise ValueError("Unknown or stale packet; run next again")
+    def window_tasks(self, window: str) -> list[Task]:
+        for window_id in self.plan.windows:
+            if digest([self.plan.id, window_id]) == window:
+                return [task for task in self.plan.tasks if task.window == window_id]
+        raise ValueError("Unknown or stale window; run next again")
 
-    def next_group(self) -> dict:
+    def next_window(self) -> dict:
         pending = [task for task in self.plan.tasks if task.id not in self._answers]
         if not pending:
             return {"remaining": 0, "next": None}
-        group = next(
-            group
-            for group in self.plan.packets
-            if any(task.group == group for task in pending)
+        window_id = next(
+            window_id
+            for window_id in self.plan.windows
+            if any(task.window == window_id for task in pending)
         )
-        packet = digest([self.plan.id, group])
-        tasks = self.packet_tasks(packet)
-        resources = self.plan.packets[group]
-        rendered = self.read_packet(packet, resources)
+        window = digest([self.plan.id, window_id])
+        tasks = self.window_tasks(window)
+        resources = self.plan.windows[window_id]
+        rendered = self.read_window(window, resources)
         return {
-            "packet": packet,
+            "window": window,
             "resource": resources[0],
             "resources": resources,
             "related_resources": resources,
@@ -234,21 +234,21 @@ class Session:
             "page": rendered,
         }
 
-    def read_packet(self, packet: str, resources: list[str] | None = None) -> dict:
-        """Render every resource in a packet once for the session bootstrap.
+    def read_window(self, window: str, resources: list[str] | None = None) -> dict:
+        """Render every resource in a window once for the session bootstrap.
 
         The old bootstrap rendered only the first resource, forcing the agent
         to spend tool calls reopening the remaining scenes or table fields.
-        Each text resource is already filtered to this packet by
+        Each text resource is already filtered to this window by
         :meth:`read_resource`; dialogue resources remain complete scenes.
         """
         resources = resources or next(
-            self.plan.packets[group]
-            for group in self.plan.packets
-            if digest([self.plan.id, group]) == packet
+            self.plan.windows[window_id]
+            for window_id in self.plan.windows
+            if digest([self.plan.id, window_id]) == window
         )
         pages = [
-            self.read_resource(resource, packet=packet, limit=64000)
+            self.read_resource(resource, window=window, limit=64000)
             for resource in resources
         ]
         text = "\n\n".join(
@@ -258,8 +258,8 @@ class Session:
         for page in pages:
             terms.update(page["terms"])
         return {
-            "packet": packet,
-            "view": "packet",
+            "window": window,
+            "view": "window",
             "resources": resources,
             "text": text,
             "terms": dict(list(terms.items())[:50]),
@@ -270,7 +270,7 @@ class Session:
         self,
         resource_id: str,
         *,
-        packet: str | None = None,
+        window: str | None = None,
         offset: int = 0,
         limit: int = 12000,
     ) -> dict:
@@ -281,7 +281,7 @@ class Session:
         if resource_id not in self.plan.resources:
             raise ValueError("Unknown resource in this plan")
         resource = read_resource(self.cache, self.plan.resources[resource_id])
-        tasks = self.packet_tasks(packet) if packet else []
+        tasks = self.window_tasks(window) if window else []
         numbers = {task.key: (str(i), task) for i, task in enumerate(tasks, 1)}
         all_tasks = {task.key: task for task in self.plan.tasks}
         document = dictionary_at(
@@ -304,7 +304,7 @@ class Session:
         previous_block = None
         for occurrence in resource.occurrences():
             address = (resource.output, tuple(resource.path), occurrence["source"])
-            if resource.kind == "text" and packet and address not in numbers:
+            if resource.kind == "text" and window and address not in numbers:
                 continue
             block = occurrence.get("block")
             if block is not None and block != previous_block:
@@ -347,7 +347,7 @@ class Session:
         terms = list(terms_payload(relevant).items())
         return {
             "resource": resource.id,
-            "view": "packet" if resource.kind == "text" and packet else "full",
+            "view": "window" if resource.kind == "text" and window else "full",
             "offset": offset,
             "text": text[offset : offset + limit],
             "next_offset": offset + limit if offset + limit < len(text) else None,
@@ -384,8 +384,8 @@ class Session:
             "terms": dict(terms[offset : offset + 20]),
         }
 
-    def submit_packet(self, packet: str, values: dict) -> dict:
-        tasks = self.packet_tasks(packet)
+    def submit_window(self, window: str, values: dict) -> dict:
+        tasks = self.window_tasks(window)
         if not isinstance(values, dict) or not values:
             raise ValueError("Submit a nonempty number: translation object")
         numbered = {str(i): task for i, task in enumerate(tasks, 1)}
@@ -406,20 +406,20 @@ class Session:
             }
         )
 
-    def finish_packet(self, packet: str) -> dict:
-        tasks = self.packet_tasks(packet)
+    def finish_window(self, window: str) -> dict:
+        tasks = self.window_tasks(window)
         if any(task.id not in self._answers for task in tasks):
-            raise ValueError("Packet has unresolved translations")
+            raise ValueError("Window has unresolved translations")
         if (
             directory_digest(self.cache, self.plan.source_files)
             != self.plan.source_version
         ):
             raise ValueError("Source snapshot changed")
         self.validate(self._answers, self.current_terms)
-        return {"packet": packet, "remaining": self.status()["remaining"]}
+        return {"window": window, "remaining": self.status()["remaining"]}
 
-    def revise_packet(self, packet: str, values: dict) -> dict:
-        tasks = {str(i): task for i, task in enumerate(self.packet_tasks(packet), 1)}
+    def revise_window(self, window: str, values: dict) -> dict:
+        tasks = {str(i): task for i, task in enumerate(self.window_tasks(window), 1)}
         if not isinstance(values, dict) or not values or set(values) - set(tasks):
             raise ValueError("Invalid revision numbers")
         incoming = []
@@ -436,16 +436,16 @@ class Session:
             )
         return self.submit({"translations": incoming})
 
-    def propose_packet(self, packet: str, values: list[dict]) -> dict:
+    def propose_window(self, window: str, values: list[dict]) -> dict:
         if not isinstance(values, list) or any(
             not isinstance(item, dict) for item in values
         ):
             raise ValueError("Term proposals must be a JSON array of objects")
-        tasks = {str(i): task for i, task in enumerate(self.packet_tasks(packet), 1)}
+        tasks = {str(i): task for i, task in enumerate(self.window_tasks(window), 1)}
         proposals = []
         for item in values:
             if item.get("evidence") not in tasks:
-                raise ValueError("Unknown evidence number in packet")
+                raise ValueError("Unknown evidence number in window")
             proposals.append({**item, "evidence": tasks[item["evidence"]].id})
         return self.propose(proposals)
 
