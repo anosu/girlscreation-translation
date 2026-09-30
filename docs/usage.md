@@ -23,9 +23,9 @@ npm run workflow -- publish
 npm run workflow -- check
 ```
 
-translate 为每个工作包启动单独的 Agent 会话，保存已校验答案。失败后重跑同一命令继续。publish 在全部目标预检通过后合并字典；中断可重跑，人工修改冲突需先解决。check 不证明语义质量、全游戏覆盖或远端最新。
+translate 为每个目标启动一个可恢复的 Agent 会话，连续消费多个读取窗口并保存已校验答案。失败后重跑同一命令继续剩余任务。publish 在全部目标预检通过后合并字典；中断可重跑，人工修改冲突需先解决。check 不证明语义质量、全游戏覆盖或远端最新。
 
-工作包由框架自动组织：名称优先，剧情正文和标题一起处理；同表字段和短文本适度合包，长表分批。无需配置主 Agent 或并发队列。plan 和 summary 显示工作包数量，translate 输出每包耗时与剩余待办；--limit 限制输入资源范围，不是 Agent 会话数。升级分包逻辑后重新 plan 即可，已有交付不重翻。
+读取窗口由框架自动组织：名称优先，剧情正文和标题一起处理；相邻短剧情可共享窗口，同表字段和短文本适度合并，长表分批。无需配置主 Agent 或并发队列。plan 和 summary 显示窗口数量，translate 输出整个会话耗时与剩余待办；--limit 限制输入资源范围，不是窗口或 Agent 会话数。升级窗口逻辑后重新 plan 即可，已有交付不重翻。
 
 update 是同步、规划、翻译、发布和检查的组合命令，会访问资源并在需要时调用模型。只想查看待办时使用 plan，不使用 update。
 
@@ -36,7 +36,7 @@ update 是同步、规划、翻译、发布和检查的组合命令，会访问�
 - plan/update 的 --limit 只计算仍有缺失译文的资源，不限制同步成本。已完成资源作为上下文保留，不占额度；共享输出文件的资源仍完整纳入。额度无法容纳任何待翻译组时会报错，并提示最低上限。规划报告和 summary 会分别显示本次选择与因上限暂缓的待办。
 - --backend > TRANSLATION_BACKEND > 目标 backend > 项目 backend。
 - --model > TRANSLATION_MODEL > 后端 model。
-- translate/update 的 --timeout 是每个工作包的模型进程时限，默认 3600 秒。
+- translate/update 的 --timeout 是整个 Agent 会话的模型进程时限，默认 10800 秒。
 - project.cache 统一设置缓存根目录，默认 .cache/translation，自动按项目 ID 和语言隔离。目标可指定 translations、glossary、style 和 rules；一般无需手动配置 sources 或 work。
 - 资源的 path 定位输出文件中的字典，省略时为根字典。目标的 term_sources 可指定 names.json 等标准译名字典；详见[完整示例](examples/dictionaries/README.md)。
 

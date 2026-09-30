@@ -234,6 +234,6 @@ def prepare_tasks(project: Project, target: Target, limit: int | None = None) ->
     print(
         f"{target.code}: {len(selected)}/{len(resources)} resources "
         f"({selected_pending}/{len(pending_resources)} pending), "
-        f"{len(tasks)}/{len(pending_keys)} missing dictionary keys selected, {len(packets)} work packets"
+        f"{len(tasks)}/{len(pending_keys)} missing dictionary keys selected, {len(packets)} reading windows"
     )
     return plan

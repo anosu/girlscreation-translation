@@ -1,60 +1,77 @@
-"""Group translation work by context, with bounded batches for short texts."""
+"""Build bounded translation packets from complete, context-bearing units."""
+
+from collections.abc import Iterable
 
 from workflow.models import Task
 from workflow.resources import Resource
 
-# Bounds on source material, not a token estimate or a limit on whole scenes.
-TEXT_ITEMS = 120
-TEXT_CHARS = 12000
+# These are source-material budgets, not model-token limits. A unit (a scene or
+# a table group) is never split merely to hit a packet boundary.
+PACKET_ITEMS = 480
+PACKET_CHARS = 32000
+MAX_STORIES = 6
+
+# Compatibility aliases for tests and callers that used the old names.
+TEXT_ITEMS = PACKET_ITEMS
+TEXT_CHARS = PACKET_CHARS
 
 
 def assign_packets(
     tasks: list[Task], resources: list[Resource], files: dict[str, str]
 ) -> dict[str, list[str]]:
-    """Names first, intact scenes with their titles, then related text batches.
+    """Assign tasks while keeping complete scenes and table groups together.
 
-    Mutates only Task.group. Task identities and destination dictionaries stay intact.
-    Completed materials remain in the plan for optional searches and reading.
+    A dialogue resource and all auxiliary resources for the same output file
+    form one indivisible unit. Several such units may share a packet. Text
+    resources are grouped by output file and parent path, then split only when
+    one group itself exceeds the source-material budget.
     """
     packets: dict[str, list[str]] = {}
     by_id = {resource.id: resource for resource in resources}
     by_file = {file: key for key, file in files.items()}
     scenes = {resource.output for resource in resources if resource.kind == "dialogue"}
 
-    def add(batch: list[Task], scene: str | None = None) -> None:
+    def task_size(batch: Iterable[Task]) -> tuple[int, int]:
+        batch = list(batch)
+        return len(batch), sum(len(task.source) for task in batch)
+
+    def add(batch: list[Task]) -> None:
         if not batch:
             return
         members = dict.fromkeys(
             by_file[reference] for task in batch for reference in task.references
         )
-        if scene is not None:
-            # A missing title still needs its already-translated dialogue as context.
-            members = dict.fromkeys(r.id for r in resources if r.output == scene)
+        # A title may be the only pending resource while its completed dialogue
+        # is still required as context.
+        for output in {task.output for task in batch if task.output in scenes}:
+            for resource in resources:
+                if resource.output == output:
+                    members[resource.id] = None
         ordered = sorted(members, key=lambda key: by_id[key].kind != "dialogue")
         group = f"packet-{len(packets) + 1}"
         packets[group] = ordered
         for task in batch:
             task.group = group
 
-    def bounded(groups: list[list[Task]]) -> None:
+    def pack_units(units: list[list[Task]], *, max_units: int | None = None) -> None:
         batch: list[Task] = []
-        chars = 0
-        for group in groups:
-            size = sum(len(task.source) for task in group)
+        items = chars = unit_count = 0
+        for unit in units:
+            unit_items, unit_chars = task_size(unit)
             # Keep a table together when it fits; split a large field by task only.
             if batch and (
-                len(batch) + len(group) > TEXT_ITEMS or chars + size > TEXT_CHARS
+                items + unit_items > PACKET_ITEMS
+                or chars + unit_chars > PACKET_CHARS
+                or (max_units is not None and unit_count >= max_units)
             ):
                 add(batch)
-                batch, chars = [], 0
-            for task in group:
-                if batch and (
-                    len(batch) >= TEXT_ITEMS or chars + len(task.source) > TEXT_CHARS
-                ):
-                    add(batch)
-                    batch, chars = [], 0
-                batch.append(task)
-                chars += len(task.source)
+                batch, items, chars, unit_count = [], 0, 0, 0
+            # A single scene or table group remains whole even if it exceeds
+            # the advisory packet budget.
+            batch.extend(unit)
+            items += unit_items
+            chars += unit_chars
+            unit_count += 1
         add(batch)
 
     terms: dict[str, list[Task]] = {}
@@ -67,8 +84,30 @@ def assign_packets(
             stories.setdefault(task.output, []).append(task)
         else:
             texts.setdefault((task.output, tuple(task.path[:-1])), []).append(task)
-    bounded(list(terms.values()))
-    for scene, batch in stories.items():
-        add(batch, scene)
-    bounded(list(texts.values()))
+    # Process standard names first so later packets see accepted terminology.
+    pack_units(list(terms.values()))
+
+    # A story is the context unit. Titles and other resources sharing its output
+    # stay with it, while neighboring short stories can share one session.
+    story_units = []
+    for output, story_tasks in stories.items():
+        story_units.append(
+            story_tasks
+            + [
+                task
+                for task in tasks
+                if task.output == output and not task.term and task not in story_tasks
+            ]
+        )
+    pack_units(story_units, max_units=MAX_STORIES)
+
+    # Keep fields from the same table together when possible. Oversized fields
+    # are the only text groups split at individual task boundaries.
+    text_units: list[list[Task]] = []
+    for group in texts.values():
+        if task_size(group)[0] <= PACKET_ITEMS and task_size(group)[1] <= PACKET_CHARS:
+            text_units.append(group)
+        else:
+            text_units.extend([task] for task in group)
+    pack_units(text_units)
     return packets

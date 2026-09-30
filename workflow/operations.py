@@ -107,7 +107,7 @@ def run_summary(project: Project, targets: list[Target]) -> str:
             lines.extend(
                 [
                     "",
-                    f"{target.code}: {report['packets']} work packets for {report.get('resource_packets', 0)} resources with tasks; only packets still missing answers start an agent.",
+                    f"{target.code}: {report['packets']} reading windows for {report.get('resource_packets', 0)} resources with tasks; one resumable agent session consumes the pending windows.",
                 ]
             )
     lines.extend(

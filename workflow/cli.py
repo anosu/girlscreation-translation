@@ -105,8 +105,8 @@ def argument_parser() -> argparse.ArgumentParser:
             sub.add_argument(
                 "--timeout",
                 type=positive,
-                default=3600,
-                help="Agent timeout per resource packet",
+                default=10800,
+                help="Total timeout for the translation agent session",
             )
         if command == "cache":
             sub.add_argument("--prune", action="store_true", required=True)

@@ -1,4 +1,4 @@
-"""Bounded reading and packet-bound submissions for a translation agent."""
+"""Bounded reading and window-bound submissions for a translation agent."""
 
 import argparse
 import json

@@ -219,7 +219,7 @@ class Session:
         packet = digest([self.plan.id, group])
         tasks = self.packet_tasks(packet)
         resources = self.plan.packets[group]
-        rendered = self.read_resource(resources[0], packet=packet)
+        rendered = self.read_packet(packet, resources)
         return {
             "packet": packet,
             "resource": resources[0],
@@ -232,6 +232,38 @@ class Session:
             ],
             "remaining": len(pending),
             "page": rendered,
+        }
+
+    def read_packet(self, packet: str, resources: list[str] | None = None) -> dict:
+        """Render every resource in a packet once for the session bootstrap.
+
+        The old bootstrap rendered only the first resource, forcing the agent
+        to spend tool calls reopening the remaining scenes or table fields.
+        Each text resource is already filtered to this packet by
+        :meth:`read_resource`; dialogue resources remain complete scenes.
+        """
+        resources = resources or next(
+            self.plan.packets[group]
+            for group in self.plan.packets
+            if digest([self.plan.id, group]) == packet
+        )
+        pages = [
+            self.read_resource(resource, packet=packet, limit=64000)
+            for resource in resources
+        ]
+        text = "\n\n".join(
+            f"### Resource {page['resource']}\n{page['text']}" for page in pages
+        )
+        terms = {}
+        for page in pages:
+            terms.update(page["terms"])
+        return {
+            "packet": packet,
+            "view": "packet",
+            "resources": resources,
+            "text": text,
+            "terms": dict(list(terms.items())[:50]),
+            "more_terms": len(terms) > 50,
         }
 
     def read_resource(
@@ -384,7 +416,7 @@ class Session:
         ):
             raise ValueError("Source snapshot changed")
         self.validate(self._answers, self.current_terms)
-        return {"packet": packet, "remaining": 0}
+        return {"packet": packet, "remaining": self.status()["remaining"]}
 
     def revise_packet(self, packet: str, values: dict) -> dict:
         tasks = {str(i): task for i, task in enumerate(self.packet_tasks(packet), 1)}

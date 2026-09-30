@@ -113,6 +113,45 @@ class PacketTests(unittest.TestCase):
         self.assertEqual(len(session.packet_tasks(packet["packet"])), TEXT_ITEMS + 5)
         self.assertEqual(packet["resources"], ["scene-0"])
 
+    def test_short_scenes_share_packets_and_bootstrap_contains_each_resource(self):
+        resources = []
+        for n in range(6):
+            resources.append(
+                {
+                    "id": f"scene-{n}",
+                    "output": f"novels/{n}.json",
+                    "kind": "dialogue",
+                    "lines": [[None, f"场景{n}台词{i}"] for i in range(40)],
+                }
+            )
+            resources.append(text(f"title-{n}", f"novels/{n}.json", [f"标题{n}"]))
+        plan = self.plan(resources)
+        self.assertEqual(len(plan.packets), 1)
+        self.assertEqual(
+            list(plan.packets.values()),
+            [
+                [
+                    "scene-0",
+                    "scene-1",
+                    "scene-2",
+                    "scene-3",
+                    "scene-4",
+                    "scene-5",
+                    "title-0",
+                    "title-1",
+                    "title-2",
+                    "title-3",
+                    "title-4",
+                    "title-5",
+                ],
+            ],
+        )
+        session = setup_session(self.target.work)
+        packet = session.next_group()
+        self.assertIn("场景0台词0", packet["page"]["text"])
+        self.assertIn("场景4台词0", packet["page"]["text"])
+        self.assertIn("场景5台词0", packet["page"]["text"])
+
     def test_long_table_splits_and_only_renders_current_batch_by_default(self):
         rows = [f"項目{i:04d}" for i in range(TEXT_ITEMS * 2 + 1)]
         plan = self.plan([text("items", "master.json", rows, ["mItems", "name"])])

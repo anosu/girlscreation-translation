@@ -202,7 +202,8 @@ class CodexIntegrationTests(unittest.TestCase):
                 + ")\n"
                 "from workflow.session import Session\ns=Session(Path(sys.argv[1]))\npacket=s.next_group()\n"
                 "context=s.read_resource(packet['resource'],packet=packet['packet'])\n(s.work/'context-used.json').write_text(json.dumps(context),encoding='utf-8')\n"
-                "print(s.submit_packet(packet['packet'],{'1':'测试译文{0}'}))\n",
+                "print(s.submit_packet(packet['packet'],{'1':'测试译文{0}'}))\n"
+                "print(s.finish_packet(packet['packet']))\n",
                 encoding="utf-8",
             )
             argv = [sys.executable, str(helper), str(work)]

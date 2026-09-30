@@ -142,52 +142,68 @@ def execute_codex(command: list[str], prompt: str, log: TextIO, timeout: int) ->
 
 
 def translate_plan(
-    work: Path, backend: Backend, timeout: int = 3600, *, session: Session | None = None
+    work: Path,
+    backend: Backend,
+    timeout: int = 10800,
+    *,
+    session: Session | None = None,
 ) -> None:
-    """Let the agent inspect, translate and repair; independently require a complete queue."""
+    """Run one durable agent session over the whole pending queue.
+
+    Packet boundaries only limit the material returned by ``next``. They do
+    not restart the model session; accepted answers remain durable if the
+    process later times out and the command is rerun.
+    """
     session = session or setup_session(work)
-    while session.status()["remaining"]:
-        backend.require_model()
-        if not os.environ.get(backend.api_key_env):
+    if not session.status()["remaining"]:
+        session.finalize()
+        return
+    backend.require_model()
+    if not os.environ.get(backend.api_key_env):
+        raise ValueError(
+            f"Set {backend.api_key_env} before running the translation agent"
+        )
+    packet = session.next_group()
+    command = codex_command(backend, work)
+    prompt = (work / "agent-prompt.md").read_text(encoding="utf-8")
+    prompt += (
+        f"\nInitial assigned packet: {packet['packet']}\n"
+        "Initial material (all packet resources; continue paging only when a resource is truncated):\n"
+        f"{json.dumps(packet, ensure_ascii=False)}\n"
+    )
+    log_path = work / "agent.log"
+    if log_path.exists() and log_path.stat().st_size > 10 * 1024 * 1024:
+        log_path.replace(work / "agent.previous.log")
+    print(
+        f"Running one translation agent session; {session.status()['remaining']} pending keys, log: {log_path}",
+        flush=True,
+    )
+    started = time.monotonic()
+    before = protected_state(work)
+    try:
+        with log_path.open("a", encoding="utf-8") as log:
+            execute_codex(command, prompt, log, timeout)
+    except subprocess.TimeoutExpired as error:
+        raise ValueError(
+            f"Translation agent exceeded {timeout}s; see {log_path}. Accepted answers are saved; rerun translate to continue."
+        ) from error
+    except subprocess.CalledProcessError as error:
+        raise ValueError(
+            f"Translation agent exited with code {error.returncode}; see {log_path}. Accepted answers are saved; rerun translate after resolving the error."
+        ) from error
+    finally:
+        if protected_state(work) != before:
             raise ValueError(
-                f"Set {backend.api_key_env} before running the translation agent"
+                "Agent modified protected inputs or code; review the changes before continuing"
             )
-        packet = session.next_group()
-        command = codex_command(backend, work)
-        prompt = (work / "agent-prompt.md").read_text(encoding="utf-8")
-        prompt += (
-            f"\nAssigned packet: {packet['packet']}\n"
-            f"Initial material (first resource page; continue reading the listed resources as needed):\n{json.dumps(packet, ensure_ascii=False)}\n"
+    session.refresh_answers()
+    status = session.status()
+    if status["remaining"]:
+        raise ValueError(
+            f"Translation agent stopped with {status['remaining']} tasks remaining; accepted answers are saved; rerun translate to continue."
         )
-        log_path = work / "agent.log"
-        if log_path.exists() and log_path.stat().st_size > 10 * 1024 * 1024:
-            log_path.replace(work / "agent.previous.log")
-        print(
-            f"Running translation agent; {len(packet['pending'])} pending keys, {len(packet['resources'])} resources; log: {log_path}",
-            flush=True,
-        )
-        started = time.monotonic()
-        before = protected_state(work)
-        try:
-            with log_path.open("a", encoding="utf-8") as log:
-                execute_codex(command, prompt, log, timeout)
-        except subprocess.TimeoutExpired as error:
-            raise ValueError(
-                f"Translation agent exceeded {timeout}s; see {log_path}. Accepted answers are saved; rerun translate to continue."
-            ) from error
-        except subprocess.CalledProcessError as error:
-            raise ValueError(
-                f"Translation agent exited with code {error.returncode}; see {log_path}. Accepted answers are saved; rerun translate after resolving the error."
-            ) from error
-        finally:
-            if protected_state(work) != before:
-                raise ValueError(
-                    "Agent modified protected inputs or code; review the changes before continuing"
-                )
-        session.refresh_answers()
-        session.finish_packet(packet["packet"])
-        print(
-            f"Packet complete in {time.monotonic() - started:.1f}s; {session.status()['remaining']} keys remain",
-            flush=True,
-        )
+    print(
+        f"Translation agent session complete in {time.monotonic() - started:.1f}s",
+        flush=True,
+    )
     session.finalize()

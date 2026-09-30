@@ -413,7 +413,7 @@ class ResourceWorkflowTests(unittest.TestCase):
         restore_artifacts(self.project, [self.target], artifacts)
         merge_results(self.project, self.target)
 
-    def test_agent_must_submit_and_runs_in_bounded_packets(self):
+    def test_agent_session_consumes_all_translation_windows(self):
         self.plan()
         calls = []
 
@@ -421,14 +421,19 @@ class ResourceWorkflowTests(unittest.TestCase):
             session = Session(self.target.work)
             packet = session.next_group()
             self.assertIn(packet["packet"], prompt)
-            calls.append(packet["resource"])
-            session.submit_packet(
-                packet["packet"],
-                {
-                    str(i): VALUES[task.source]
-                    for i, task in enumerate(session.packet_tasks(packet["packet"]), 1)
-                },
-            )
+            while packet.get("packet"):
+                calls.append(packet["resource"])
+                session.submit_packet(
+                    packet["packet"],
+                    {
+                        str(i): VALUES[task.source]
+                        for i, task in enumerate(
+                            session.packet_tasks(packet["packet"]), 1
+                        )
+                    },
+                )
+                session.finish_packet(packet["packet"])
+                packet = session.next_group()
 
         backend = replace(self.project.backend(self.target), model="test")
         with (
@@ -446,7 +451,7 @@ class ResourceWorkflowTests(unittest.TestCase):
             patch.dict(os.environ, {"MODEL_API_KEY": "test"}),
             patch("workflow.translate.execute_codex"),
         ):
-            with self.assertRaisesRegex(ValueError, "unresolved"):
+            with self.assertRaisesRegex(ValueError, "tasks remaining"):
                 translate_plan(self.target.work, backend)
 
         def mutate(*args):
