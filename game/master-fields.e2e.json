@@ -1,0 +1,8 @@
+{
+    "mActionPatterns": {
+        "name": "string"
+    },
+    "mActiveSkillSideEffectFilters": {
+        "ml_name": "array"
+    }
+}
