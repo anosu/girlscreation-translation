@@ -5,17 +5,17 @@
 ## 安装与预览
 
 ```sh
-uv sync --frozen
+uv sync --frozen --extra girlscreation
 npm ci
 npm run workflow -- sync
 npm run workflow -- plan
 ```
 
-sync 获取适配器选定的材料。本仓库默认访问游戏 CDN，plan 只读上次成功同步的本地快照，不访问游戏服务器、不调用模型。只想离线体验框架时，为 sync、plan 都传入 --config docs/examples/dictionaries/translation.toml；该 JSON 示例首次产生 5 份资源、27 条待办，重复台词只生成一个字典待办。游戏依赖需额外安装 uv sync --frozen --extra girlscreation。
+sync 获取适配器选定的材料；本游戏默认访问 CDN。plan 只读上次成功同步的本地快照，不访问游戏服务器、不调用模型。要离线查看通用示例，可为 sync、plan 都传入 `--config docs/examples/dictionaries/translation.toml`；该示例首次产生 5 份资源、27 条待译项，重复台词只生成一条待译项。
 
 ## 翻译与发布
 
-在配置中填写 backend 的 model，设置 api_key_env 指定的密钥环境变量。本游戏使用 DEEPSEEK_API_KEY，通用示例使用 MODEL_API_KEY；项目不自动加载 .env，后端需支持 Responses API 与工具调用。
+在配置中填写 backend 的 model，设置 api_key_env 指定的密钥环境变量。本游戏使用 `DEEPSEEK_API_KEY`，通用示例使用 `MODEL_API_KEY`；项目不自动加载 `.env`，后端需支持 Responses API 与工具调用。
 
 ```sh
 npm run workflow -- translate
@@ -23,20 +23,20 @@ npm run workflow -- publish
 npm run workflow -- check
 ```
 
-translate 为每个目标启动一个可恢复的 Agent 会话。Agent 从工作目录的 plan.json 和原文快照按需阅读，一次可按资源提交多份原文:译文映射；已校验答案保存在单个 answers.json 中。失败后重跑同一命令继续剩余任务。publish 在全部目标预检通过后合并字典；中断可重跑，人工修改冲突需先解决。check 不证明语义质量、全游戏覆盖或远端最新。
+translate 为每个目标语言启动一次 Agent 运行。Agent 从工作目录的 plan.json 和原文快照按需阅读，一次可提交一个或多个资源的原文到译文映射；已校验答案保存在单个 answers.json 中。再次运行 translate 会启动新会话并处理剩余任务，不恢复上次的对话。publish 在全部目标预检通过后合并字典；中断可重跑，人工修改冲突需先解决。check 不证明语义质量、全游戏覆盖或远端最新。
 
-框架不规定阅读包、分页或子 Agent 数量。plan 只列出缺失的字典键及资源路径，Agent 自己选择阅读顺序；names 等标准译名字典仍会指导翻译。translate 输出整个会话耗时与剩余待办；plan 的 --limit 只限制本次选择的待译资源，不限制 Agent 会话或原文获取。计划格式升级后重新 plan 即可，已有发布字典不受影响。
+框架不截断资源正文，也不规定 Agent 的阅读顺序、分页或子 Agent 数量。plan 提供待译项、翻译约束及关联资源路径；Agent 可查阅 names 等标准译名字典和已接受的答案。translate 输出本次运行耗时与剩余待译项；plan 的 --limit 只限制本次选择的待译资源，不限制 Agent 阅读原文。计划格式升级后重新 plan 即可，已有发布字典不受影响。
 
-update 是同步、规划、翻译、发布和检查的组合命令，会访问资源并在需要时调用模型。只想查看待办时使用 plan，不使用 update。
+update 是同步、规划、翻译、发布和检查的组合命令，会访问资源并在需要时调用模型。只想查看待译项时使用 plan，不使用 update。
 
 ## 选择与配置
 
 - --config PATH 选择其他项目；--target 可重复或用逗号分隔语言。
 - sync/update 的 --source-id 传给适配器；JSON 适配器按资源 ID 选择，未知 ID 报错。
-- plan/update 的 --limit 只计算仍有缺失译文的资源，不限制同步成本。已完成资源作为上下文保留，不占额度；共享输出文件的资源仍完整纳入。额度无法容纳任何待翻译组时会报错，并提示最低上限。规划报告和 summary 会分别显示本次选择与因上限暂缓的待办。
+- plan/update 的 --limit 只计算仍有缺失译文的资源，不限制同步成本。已完成资源作为上下文保留，不占上限；共享输出文件的资源仍完整纳入。上限无法容纳任何输出文件的待译资源时会报错，并提示所需的最低值。规划报告和 summary 会分别显示本次选择与因上限暂缓的待译项。
 - --backend > TRANSLATION_BACKEND > 目标 backend > 项目 backend。
 - --model > TRANSLATION_MODEL > 后端 model。
-- translate/update 的 --timeout 是整个 Agent 会话的模型进程时限，默认 10800 秒。
+- translate/update 的 --timeout 限制单次 Agent 进程运行时间，默认 10800 秒。
 - project.cache 统一设置缓存根目录，默认 .cache/translation，自动按项目 ID 和语言隔离。目标可指定 translations、glossary、style 和 rules；一般无需手动配置 sources 或 work。
 - 资源的 path 定位输出文件中的字典，省略时为根字典。目标的 term_sources 可指定 names.json 等标准译名字典；详见[完整示例](examples/dictionaries/README.md)。
 
@@ -52,11 +52,11 @@ init 生成空的 sources/resources.json 及配置、风格、术语和 manifest
 
 ## 维护与 CI
 
-status 显示下一步，summary 显示统计。迁移工作目录后重新运行 translate 会绑定路径；原文快照须一并保留。
+status 显示下一步，summary 显示统计。移动工作目录后，重新运行 translate 会更新路径绑定；原文快照仍须保留。
 
 人工改译后运行 npm run build:manifest。提交钩子默认读取暂存的 game/translation.toml；独立项目可传 --config 或调整钩子。
 
-[Update Translations](../.github/workflows/update_translation.yml) 手动运行默认 plan_only=true：同步选定资源并规划，不调用模型或发布，但同步可能联网。实际运行需配置模型与对应的仓库 Secret，关闭 plan_only。CI 先同步一次，按目标语言隔离工作，再统一发布。本游戏保留每日更新和周日历史检查，获取范围与成本见[游戏说明](../game/README.md)。
+[Update Translations](../.github/workflows/update_translation.yml) 手动运行时默认 `plan_only=true`：同步选定资源并规划，不调用模型或发布，但同步可能联网。实际运行需配置模型与对应的仓库 Secret，关闭 `plan_only`。CI 先同步一次，按目标语言隔离工作，再统一发布。本游戏保留每日更新和周日历史检查，获取范围与成本见[游戏说明](../game/README.md)。
 
 ## 静态服务
 
@@ -70,6 +70,6 @@ npm start 提供根目录 translations/ 下的文件，URL 前缀 /translations/
 
 fetch/prepare/merge 改为 sync/plan/publish，catalog/setup/finalize 不再是用户入口；不再有 update --dry-run 或通用 --check-existing。CI 的 dry_run 输入改为 plan_only，旧历史检查由游戏适配器自己的配置控制。
 
-已有 dialogue/text 资源、嵌套交付字典和显式 sources/work 配置保持兼容，无需转换。此次内部计划与答案格式升级后，重新运行 plan、translate；已发布译文不重翻，旧工作包答案不迁移。旧逐条 Entry 的迁移仍需按上文修改适配器。
+已有 dialogue/text 资源、嵌套交付字典和显式 sources/work 配置保持兼容，无需转换。内部计划与答案格式升级后，重新运行 plan、translate；已发布译文不重翻，旧版临时答案文件不迁移。旧逐条 Entry 的迁移仍需按上文修改适配器。
 
 开发检查：npm test、npm run typecheck、npm run lint。

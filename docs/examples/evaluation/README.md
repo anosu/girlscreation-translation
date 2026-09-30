@@ -6,6 +6,6 @@
 npm run workflow -- evaluate --suite docs/examples/evaluation/zh-Hans.json --answers docs/examples/evaluation/answers.json --output .cache/evaluation.json
 ```
 
-评估器只读取文件，分别报告格式错误、参考译文匹配和待审项。缺失答案或违反规则会返回非零退出码；措辞差异由人工判断。
+评估命令读取套件与答案文件，并将报告写入 `--output` 指定的位置。报告区分格式错误、参考译文匹配和待审项；缺失答案或违反规则会返回非零退出码，措辞差异由人工判断。
 
 扩充样例时在 `note` 中记录场景及判断依据。参考译文经人工审阅后设为 `review_status: confirmed`，其余使用 `pending`。

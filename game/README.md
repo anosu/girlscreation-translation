@@ -1,6 +1,6 @@
 # 游戏配置与迁移
 
-默认配置是本目录的 `translation.toml`，所有相对路径以本目录为基准。DeepSeek 后端、`high` 推理设置、1M 上下文配置及 `DEEPSEEK_API_KEY` 名称沿用原项目。
+默认配置是本目录的 `translation.toml`，所有相对路径以本目录为基准。DeepSeek 后端使用 `deepseek-flash`、`medium` 推理强度和 `DEEPSEEK_API_KEY` 环境变量；框架不配置 Agent 的上下文窗口。
 
 ## 获取范围
 
@@ -19,15 +19,15 @@
 
 `term_sources` 从 `names.json`、`master.json` 的 `mUnits.ml_name[]` 和 `mSubunits.ml_name[]` 读取全部标准译名，包括此次未重抓的历史角色。glossary 只补充术语和说明，`館長` 的 note 直接跟随名称字典的译法。
 
-标题仍保存在原来的剧情和 master 位置，不新增客户端未使用的 `titles.json`。新框架按输出字典定位待办，保留已有标题差异；不再自动跨位置重写或统一旧标题。翻译缺失标题时，Agent 可以检索实际标题资源和历史译文。标题不作为全局角色名称，避免同文异义冲突。
+标题仍保存在原来的剧情和 master 位置，不新增客户端未使用的 `titles.json`。框架按输出字典位置规划待译项，保留已有标题差异；不跨位置重写或统一旧标题。翻译缺失标题时，Agent 可以检索实际标题资源和历史译文。标题不作为全局角色名称，避免同文异义冲突。
 
 ## 从本仓库旧版本升级
 
 - 配置从根目录迁到 `game/translation.toml`；自定义命令、外部 CI 调用和书签需更新 `--config` 路径。
-- `fetch/prepare/merge` 对应 `sync/plan/publish`；去掉 `catalog/setup/finalize` 和 `update --dry-run`，离线查看待办直接用 `plan`。
+- `fetch/prepare/merge` 对应 `sync/plan/publish`；去掉 `catalog/setup/finalize` 和 `update --dry-run`，离线查看待译项直接用 `plan`。
 - CI 的 `dry_run` 改为 `plan_only`；本游戏仍保留 `check_existing` 和原来的定时获取安排。
-- `--limit` 按仍有缺失译文的资源数计算，已完成的名称或 master 字段不占额度。master 各字段资源共享一个输出文件，有待办的字段必须一起纳入，不能用低上限拆半发布；容纳不了任何待翻译组时会明确报错。
-- `translations/`、客户端地址和原有 manifest 均不迁移、不改写。旧 `.cache/` 保留；Entry 计划和旧草稿不能直接作为 Resource 计划恢复，需要重新 `sync`、`plan`。后续同一 Resource 工作流内的升级可在原工作目录复用适用草稿。
+- `--limit` 按仍有缺失译文的资源数计算，已完成的名称或 master 字段不占上限。master 各字段资源共享一个输出文件，规划时不会拆开；上限无法容纳任何含待译项的输出文件时会报错。
+- `translations/`、客户端地址和原有 manifest 均不迁移、不改写。旧 `.cache/` 保留；Entry 计划和旧版临时答案文件不能直接用于当前 Resource 计划，需要重新 `sync`、`plan`。后续重新规划可保留仍适用的已接受答案。
 - 原始抓取缓存现由适配器维护在 `.cache/translation/girlscreation/adapter-cache/`；不可变快照和 Agent 工作目录由框架自动隔离在同级缓存目录中。
 
 框架契约见 [docs/adapters.md](../docs/adapters.md)。

@@ -26,7 +26,7 @@ npm run workflow -- publish
 npm run workflow -- check
 ```
 
-`update` 连续执行以上五个阶段。中断后重跑 `translate` 可恢复适用答案；发布中断后重跑 `publish`。具体用法见[使用手册](docs/usage.md)。
+`update` 连续执行以上五个阶段。中断后重跑 `translate` 会开启新 Agent 会话，已接受的适用答案仍会保留；发布中断后可重跑 `publish`。具体用法见[使用手册](docs/usage.md)。
 
 ## 目录
 
@@ -45,7 +45,7 @@ tests/                   框架、游戏适配器和部署回归测试
 
 在仓库 Secrets 中添加 `DEEPSEEK_API_KEY`，运行 [Update Translations](.github/workflows/update_translation.yml)。默认 `plan_only=true`，同步并规划但不调用模型；关闭后实际翻译和发布。`source_ids` 可指定逗号分隔的剧情 ID，`check_existing` 由本游戏适配器解释。
 
-保留原有每天北京时间 13:30 的自动更新及周日历史检查。完整历史检查会重新下载已有剧情，成本较高；日常更新无需开启。`limit` 只限制仍需翻译的资源数，已完成资源不占额度，也不限制下载；共享一个输出文件的资源必须一起纳入。
+保留原有每天北京时间 13:30 的自动更新及周日历史检查。完整历史检查会重新下载已有剧情，成本较高；日常更新无需开启。`limit` 只限制本次规划选中的待译资源数，已完成资源不占上限，也不限制原文获取；共享一个输出文件的资源在规划时不会拆开。
 
 ## 静态服务与开发
 

@@ -1,8 +1,8 @@
 # 完成翻译计划
 
-你是负责最终交付的翻译 Agent。WORK/plan.json 中的 tasks 是待译原文，每条 task 的 references 列出相关资源 ID；resources 将资源 ID 映射到原文快照相对路径，WORK/runtime.json 的 sources 指向快照根目录。按需使用文件、搜索和终端工具阅读完整剧情、已有字典及术语，不要求固定阅读顺序，也不要读取其他语言的缓存。
+你是负责最终交付的翻译 Agent。WORK/plan.json 的 tasks 是待译项，每条 task 的 references 是相关资源 ID；resources 将资源 ID 映射到原文快照相对路径，WORK/runtime.json 的 sources 指向快照根目录。按需使用文件、搜索和终端工具阅读完整剧情、已有字典及术语，不要求固定阅读顺序，也不要读取其他语言的缓存。
 
-剧情要结合整段顺序、说话人和已有译文判断语境；标题结合剧情翻译。表和字段按输出文件及 path 区分，同文不一定同义。names 和明确配置的术语是标准译法；普通台词中的术语按语境使用，required_terms 仍须遵守。不要补造原文没有的标题、摘要或背景。核对标签、占位符、换行、人物口吻和漏译。
+剧情要结合整段顺序、说话人和已有译文判断语境；有对应剧情时，标题也应结合剧情翻译。表和字段按输出文件及 path 区分，同文不一定同义。已发布的 names 等标准字典和明确配置的术语是译名依据；处理后续资源时也要参考 WORK/answers.json 中本轮已接受的译文。普通台词中的术语按语境使用，required_terms 仍须遵守。不要补造原文没有的标题、摘要或背景。核对标签、占位符、换行、人物口吻和漏译。
 
 一次可提交一个或多个资源。提交 JSON 格式是资源 ID 到扁平原文:译文对象，例如：
 
@@ -12,7 +12,7 @@
 
 uv run --no-sync python -m workflow.agent submit FILE --work WORK
 
-也可把 FILE 写为 -，从标准输入提交。每次提交会校验并原子保存；修改已提交译文时再次提交该原文即可。用 uv run --no-sync python -m workflow.agent status --work WORK 查看剩余数，持续处理到 remaining 为 0；最终完整性与发布由框架检查。不要只在最终回复贴 JSON。
+也可把 FILE 写为 -，从标准输入提交。每次提交会校验并原子保存；修改已提交译文时再次提交该原文即可。用 uv run --no-sync python -m workflow.agent status --work WORK 查看剩余数，持续处理到 remaining 为 0。Agent 退出后由 translate 检查完整性，发布另由 publish 阶段执行；不要只在最终回复贴 JSON。
 
 任务很大且存在独立剧情或校对工作时，可酌情使用少量原生 subagent；由主 Agent 统一术语、审校和提交，避免并发改写共享答案。
 
