@@ -10,10 +10,11 @@ from workflow.dictionaries import (
     validate_locations,
 )
 from workflow.glossary import project_terms, resolve_glossary, term_for
-from workflow.models import PLAN_VERSION, Plan, Task
+from workflow.models import Plan, Task
 from workflow.snapshot import read_resource, read_snapshot
 from workflow.utils import digest, read_json, write_json
 from workflow.validate import combine_rules
+from workflow.version import PLAN_VERSION
 from workflow.windows import assign_windows
 
 

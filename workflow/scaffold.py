@@ -6,6 +6,7 @@ import tomli_w
 
 from workflow.build import make_manifest
 from workflow.config import Configuration
+from workflow.version import CONFIG_SCHEMA_VERSION
 
 
 def create_project(
@@ -25,7 +26,7 @@ def create_project(
     if len(set(locales)) != len(locales):
         raise ValueError("Target languages must be unique")
     config = {
-        "schema_version": 1,
+        "schema_version": CONFIG_SCHEMA_VERSION,
         "project": {
             "id": project_id,
             "name": name or project_id,

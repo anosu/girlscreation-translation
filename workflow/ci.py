@@ -18,6 +18,7 @@ from workflow.config import (
     nonempty,
 )
 from workflow.prepare import bind_runtime, read_plan
+from workflow.version import CACHE_NAMESPACE
 
 
 def workspace_path(path: Path) -> str:
@@ -127,6 +128,7 @@ def main() -> None:
                     "adapter_cache": workspace_path(
                         project.sources.parent / "adapter-cache"
                     ),
+                    "cache_namespace": CACHE_NAMESPACE,
                 },
                 args.github_output,
             )

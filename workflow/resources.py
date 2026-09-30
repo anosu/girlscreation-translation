@@ -7,6 +7,7 @@ from pydantic import Field, field_validator, model_validator
 
 from workflow.config import Rules, StrictModel, Text
 from workflow.dictionaries import namespace_path, output_path
+from workflow.version import SNAPSHOT_SCHEMA_VERSION, SnapshotSchemaVersion
 
 
 class TextBlock(StrictModel):
@@ -76,7 +77,7 @@ class Resource(StrictModel):
 
 
 class Snapshot(StrictModel):
-    version: Literal[1] = 1
+    version: SnapshotSchemaVersion = SNAPSHOT_SCHEMA_VERSION
     project: Text
     source_language: Text
     resources: dict[Text, str]

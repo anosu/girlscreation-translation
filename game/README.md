@@ -28,6 +28,6 @@
 - CI 的 `dry_run` 改为 `plan_only`；本游戏仍保留 `check_existing` 和原来的定时获取安排。
 - `--limit` 按仍有缺失译文的资源数计算，已完成的名称或 master 字段不占额度。master 各字段资源共享一个输出文件，有待办的字段必须一起纳入，不能用低上限拆半发布；容纳不了任何待翻译组时会明确报错。
 - `translations/`、客户端地址和原有 manifest 均不迁移、不改写。旧 `.cache/` 保留；Entry 计划和旧草稿不能直接作为 Resource 计划恢复，需要重新 `sync`、`plan`。后续同一 Resource 工作流内的升级可在原工作目录复用适用草稿。
-- 原始抓取缓存现由适配器维护在 `.cache/translation/girlscreation/adapter-cache/`；不可变快照和 Agent 工作目录分别位于同级 `sources-v8/`、`work-v9/`。
+- 原始抓取缓存现由适配器维护在 `.cache/translation/girlscreation/adapter-cache/`；不可变快照和 Agent 工作目录由框架自动隔离在同级缓存目录中。
 
 框架契约见 [docs/adapters.md](../docs/adapters.md)。

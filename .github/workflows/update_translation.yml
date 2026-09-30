@@ -93,6 +93,7 @@ jobs:
       sources: ${{ steps.meta.outputs.sources }}
       source_bundle: ${{ steps.meta.outputs.source_bundle }}
       bundle_dir: ${{ steps.meta.outputs.bundle_dir }}
+      cache_namespace: ${{ steps.meta.outputs.cache_namespace }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -109,8 +110,8 @@ jobs:
           path: |
             ${{ steps.meta.outputs.sources }}
             ${{ steps.meta.outputs.adapter_cache }}
-          key: sources-v8-${{ steps.meta.outputs.project }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: sources-v8-${{ steps.meta.outputs.project }}-
+          key: sources-${{ steps.meta.outputs.cache_namespace }}-${{ steps.meta.outputs.project }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: sources-${{ steps.meta.outputs.cache_namespace }}-${{ steps.meta.outputs.project }}-
       - name: Collect once and export immutable resources
         run: |
           args=()
@@ -160,8 +161,8 @@ jobs:
         id: cache
         with:
           path: ${{ matrix.work }}
-          key: answers-v9-${{ needs.sources.outputs.project }}-${{ matrix.language }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: answers-v9-${{ needs.sources.outputs.project }}-${{ matrix.language }}-
+          key: answers-${{ needs.sources.outputs.cache_namespace }}-${{ needs.sources.outputs.project }}-${{ matrix.language }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: answers-${{ needs.sources.outputs.cache_namespace }}-${{ needs.sources.outputs.project }}-${{ matrix.language }}-
       - name: Plan from local resources
         run: |
           args=()
@@ -195,7 +196,7 @@ jobs:
         if: always()
         with:
           path: ${{ matrix.work }}
-          key: answers-v9-${{ needs.sources.outputs.project }}-${{ matrix.language }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: answers-${{ needs.sources.outputs.cache_namespace }}-${{ needs.sources.outputs.project }}-${{ matrix.language }}-${{ github.run_id }}-${{ github.run_attempt }}
       - uses: actions/upload-artifact@v7
         if: always()
         with:

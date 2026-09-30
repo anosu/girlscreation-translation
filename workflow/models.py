@@ -1,13 +1,10 @@
 """Private planning and publication records; adapter input lives in resources.py."""
 
-from typing import Literal
-
 from pydantic import Field, field_validator, model_validator
 
 from workflow.config import Rules, StrictModel, TermSource, Text
 from workflow.dictionaries import namespace_path, output_path, validate_locations
-
-PLAN_VERSION = 12
+from workflow.version import PlanVersion
 
 
 class Task(StrictModel):
@@ -39,7 +36,7 @@ class Task(StrictModel):
 
 
 class Plan(StrictModel):
-    version: Literal[12]
+    version: PlanVersion
     id: Text
     project: Text
     project_name: Text
@@ -125,7 +122,7 @@ type TermIndex = dict[str, list[ResolvedTerm]]
 
 
 class Results(Submission):
-    version: Literal[12]
+    version: PlanVersion
     plan: Text
     project: Text
     language: Text

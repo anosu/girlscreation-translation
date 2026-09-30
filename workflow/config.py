@@ -20,6 +20,7 @@ from pydantic import (
 
 from workflow.dictionaries import namespace_path, output_path, validate_locations
 from workflow.utils import read_json
+from workflow.version import SOURCE_CACHE_DIR, WORK_CACHE_DIR, ConfigSchemaVersion
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = ROOT / "game/translation.toml"
@@ -113,7 +114,7 @@ class ProjectSettings(StrictModel):
 
 
 class Configuration(StrictModel):
-    schema_version: Annotated[int, Field(ge=1, le=1)]
+    schema_version: ConfigSchemaVersion
     project: ProjectSettings
     adapter: dict = Field(default_factory=dict)
     backends: dict[Identifier, BackendSettings] = Field(default_factory=dict)
@@ -277,7 +278,7 @@ def load_project(path: Path = DEFAULT_CONFIG) -> Project:
             values.name or code,
             values.backend,
             resolve(values.translations or f"translations/{code}"),
-            resolve(values.work) if values.work else cache / "work-v9" / code,
+            resolve(values.work) if values.work else cache / WORK_CACHE_DIR / code,
             resolve(values.glossary or f"glossary/{code}.json"),
             resolve(values.style).read_text(encoding="utf-8")
             if values.style
@@ -286,7 +287,9 @@ def load_project(path: Path = DEFAULT_CONFIG) -> Project:
             values.term_sources,
         )
     # Preserve existing directory names; file schema versions no longer change paths.
-    sources = resolve(settings.sources) if settings.sources else cache / "sources-v8"
+    sources = (
+        resolve(settings.sources) if settings.sources else cache / SOURCE_CACHE_DIR
+    )
     occupied = [
         ("project.sources", sources),
         ("project.source_bundle", sources.parent / f"{sources.name}.zip"),

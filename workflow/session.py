@@ -15,7 +15,6 @@ from workflow.glossary import (
     terms_payload,
 )
 from workflow.models import (
-    PLAN_VERSION,
     Answer,
     Results,
     Submission,
@@ -27,6 +26,7 @@ from workflow.prepare import read_plan, runtime_paths
 from workflow.snapshot import read_resource
 from workflow.utils import digest, directory_digest, read_json, write_json
 from workflow.validate import validate_results
+from workflow.version import PLAN_VERSION
 
 
 class Session:
