@@ -49,7 +49,6 @@ class StrictModel(BaseModel):
 
 class CodexSettings(StrictModel):
     effort: Literal["none", "minimal", "low", "medium", "high", "xhigh"] | None = None
-    context_window: Annotated[int, Field(gt=0)] | None = None
 
 
 class BackendSettings(StrictModel):
@@ -135,7 +134,6 @@ class Backend:
     api_key_env: str
     model: str | None = None
     effort: str | None = None
-    context_window: int | None = None
     selected_by: str = "project.backend"
     model_selected_by: str = "backend.model"
 
@@ -266,7 +264,6 @@ def load_project(path: Path = DEFAULT_CONFIG) -> Project:
             values.api_key_env,
             values.model,
             values.codex.effort,
-            values.codex.context_window,
         )
     for location, reference in [
         ("project.backend", settings.backend),

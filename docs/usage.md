@@ -23,9 +23,9 @@ npm run workflow -- publish
 npm run workflow -- check
 ```
 
-translate 为每个目标启动一个可恢复的 Agent 会话，连续消费多个读取窗口并保存已校验答案。失败后重跑同一命令继续剩余任务。publish 在全部目标预检通过后合并字典；中断可重跑，人工修改冲突需先解决。check 不证明语义质量、全游戏覆盖或远端最新。
+translate 为每个目标启动一个可恢复的 Agent 会话。Agent 从工作目录的 plan.json 和原文快照按需阅读，一次可按资源提交多份原文:译文映射；已校验答案保存在单个 answers.json 中。失败后重跑同一命令继续剩余任务。publish 在全部目标预检通过后合并字典；中断可重跑，人工修改冲突需先解决。check 不证明语义质量、全游戏覆盖或远端最新。
 
-读取窗口由框架自动组织：名称优先，剧情正文和标题一起处理；相邻短剧情可共享窗口，同表字段和短文本适度合并，长表分批。无需配置主 Agent 或并发队列。plan 和 summary 显示窗口数量，translate 输出整个会话耗时与剩余待办；--limit 限制输入资源范围，不是窗口或 Agent 会话数。升级窗口逻辑后重新 plan 即可，已有交付不重翻。
+框架不规定阅读包、分页或子 Agent 数量。plan 只列出缺失的字典键及资源路径，Agent 自己选择阅读顺序；names 等标准译名字典仍会指导翻译。translate 输出整个会话耗时与剩余待办；plan 的 --limit 只限制本次选择的待译资源，不限制 Agent 会话或原文获取。计划格式升级后重新 plan 即可，已有发布字典不受影响。
 
 update 是同步、规划、翻译、发布和检查的组合命令，会访问资源并在需要时调用模型。只想查看待办时使用 plan，不使用 update。
 
@@ -52,7 +52,7 @@ init 生成空的 sources/resources.json 及配置、风格、术语和 manifest
 
 ## 维护与 CI
 
-status 显示下一步，summary 显示统计，cache --prune --days 30 清理过期非当前任务答案。迁移工作目录后重新运行 translate 会绑定路径；原文快照须一并保留。
+status 显示下一步，summary 显示统计。迁移工作目录后重新运行 translate 会绑定路径；原文快照须一并保留。
 
 人工改译后运行 npm run build:manifest。提交钩子默认读取暂存的 game/translation.toml；独立项目可传 --config 或调整钩子。
 
@@ -70,6 +70,6 @@ npm start 提供根目录 translations/ 下的文件，URL 前缀 /translations/
 
 fetch/prepare/merge 改为 sync/plan/publish，catalog/setup/finalize 不再是用户入口；不再有 update --dry-run 或通用 --check-existing。CI 的 dry_run 输入改为 plan_only，旧历史检查由游戏适配器自己的配置控制。
 
-已有 dialogue/text 资源、嵌套交付字典和显式 sources/work 配置保持兼容，无需转换。内部计划升级时，在原配置下重新运行 plan、translate；框架校验并复用仍适用的草稿，无需新建工作目录或搬动译文。缓存目录名属于内部实现，不跟随每次计划格式升级而更改。旧逐条 Entry 的迁移仍需按上文修改适配器。
+已有 dialogue/text 资源、嵌套交付字典和显式 sources/work 配置保持兼容，无需转换。此次内部计划与答案格式升级后，重新运行 plan、translate；已发布译文不重翻，旧工作包答案不迁移。旧逐条 Entry 的迁移仍需按上文修改适配器。
 
 开发检查：npm test、npm run typecheck、npm run lint。

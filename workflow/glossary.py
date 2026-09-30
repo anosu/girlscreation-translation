@@ -11,10 +11,8 @@ from workflow.models import (
     ResolvedTerm,
     Task,
     TermIndex,
-    TermProposal,
 )
 from workflow.utils import read_json
-from workflow.validate import validate_translation
 
 
 class GlossaryEntry(StrictModel):
@@ -124,78 +122,3 @@ def resolve_glossary(path: Path | dict, names: dict[str, str]) -> TermIndex:
             [*globals_, *explicit], key=lambda term: term.categories
         )
     return resolved
-
-
-def apply_proposals(
-    proposals: Sequence[TermProposal],
-    tasks: Mapping[str, Task],
-    values: Mapping[str, str],
-    existing: dict,
-    names: dict[str, str],
-    rules: dict | None = None,
-) -> dict:
-    """Add evidenced scopes without replacing an existing definition in that scope."""
-    result = dict(existing)
-    known = resolve_glossary(result, names)
-    seen: set[tuple[str, str]] = set()
-    for proposal in proposals:
-        source, target = proposal.source, proposal.translation
-        scopes = set(proposal.categories or [""])
-        keys = {(source, scope) for scope in scopes}
-        if keys & seen:
-            raise ValueError(f"Duplicate proposed term scope: {source}")
-        seen.update(keys)
-        task = tasks.get(proposal.evidence)
-        if task is None:
-            raise ValueError(f"Unknown evidence task for {source}")
-        if proposal.categories and task.category not in proposal.categories:
-            raise ValueError(f"Evidence category is outside proposed scopes: {source}")
-        if source not in task.source:
-            raise ValueError(f"Term {source} does not occur in its evidence")
-        validate_translation(source, target, rules)
-        previous_entries = result.get(source, [])
-        previous_entries = (
-            previous_entries
-            if isinstance(previous_entries, list)
-            else [previous_entries]
-        )
-        occupied = {
-            scope
-            for raw in previous_entries
-            for scope in (GlossaryEntry.model_validate(raw).categories or [""])
-        } & scopes
-        for term in known.get(source, []):
-            overlap = scopes & set(term.categories or [""])
-            if overlap and term.translation != target:
-                raise ValueError(
-                    f"Existing term conflict: {source}: {term.translation}"
-                )
-        remaining = scopes - occupied
-        if not remaining:
-            continue
-        if not proposal.categories and names.get(source) == target:
-            # The published canonical dictionary already owns this translation.
-            continue
-        entry = GlossaryEntry(
-            translation=target,
-            note=proposal.note,
-            categories=sorted(remaining - {""}),
-        ).model_dump(exclude_none=True)
-        previous = result.get(source)
-        entries = (
-            []
-            if previous is None
-            else previous
-            if isinstance(previous, list)
-            else [previous]
-        ) + [entry]
-        result[source] = entries[0] if len(entries) == 1 else entries
-        known = resolve_glossary(result, names)
-    for key, translated in values.items():
-        task = tasks[key]
-        term = term_for(known, task.source, task.category)
-        if task.term and term and translated != term.translation:
-            raise ValueError(
-                f"Term disagrees with an accepted translation: {task.source}"
-            )
-    return result

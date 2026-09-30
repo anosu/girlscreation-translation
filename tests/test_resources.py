@@ -1,6 +1,5 @@
-"""End-to-end resource contracts, window recovery, and safe dictionary publication."""
+"""End-to-end resource contracts, resumption, and safe dictionary publication."""
 
-import json
 import os
 import shutil
 import tempfile
@@ -15,12 +14,12 @@ from workflow.ci import restore_artifacts
 from workflow.cli import argument_parser, check_translations, main
 from workflow.config import load_project
 from workflow.merge import apply_updates, merge_results, prepare_update
-from workflow.operations import prune_cache, status
+from workflow.operations import status
 from workflow.prepare import prepare_tasks, read_plan
 from workflow.resources import Resource
 from workflow.scaffold import create_project
 from workflow.session import Session, setup_session
-from workflow.snapshot import read_snapshot, sync_sources
+from workflow.snapshot import read_resource, read_snapshot, sync_sources
 from workflow.translate import translate_plan
 from workflow.utils import read_json, write_json
 
@@ -80,18 +79,16 @@ class ResourceWorkflowTests(unittest.TestCase):
     def finish(self, target=None):
         target = target or self.target
         session = setup_session(target.work)
-        while session.status()["remaining"]:
-            window = session.next_window()
-            tasks = session.window_tasks(window["window"])
-            session.submit_window(
-                window["window"],
-                {
-                    str(i): VALUES.get(task.source, task.source)
-                    for i, task in enumerate(tasks, 1)
-                    if task.id not in session.answers()
-                },
+        payload = {}
+        for task in session.plan.tasks:
+            if task.id in session.answers():
+                continue
+            resource_id = task.references[0]
+            payload.setdefault(resource_id, {})[task.source] = VALUES.get(
+                task.source, task.source
             )
-            session.finish_window(window["window"])
+        if payload:
+            session.submit_resources(payload)
         session.finalize()
         return session
 
@@ -168,33 +165,37 @@ class ResourceWorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Duplicate"):
             sync_sources(self.project)
 
-    def test_repetition_preserved_in_reading_but_not_queue(self):
-        self.plan()
+    def test_repetition_preserved_in_source_but_not_tasks(self):
+        plan = self.plan()
         session = setup_session(self.target.work)
-        cast = session.next_window()
-        session.submit_window(cast["window"], {"1": "爱丽丝"})
-        window = session.next_window()
-        text = window["page"]["text"]
-        self.assertEqual(text.count("ようこそ、{player}！"), 2)
-        self.assertEqual(len(window["pending"]), 2)
-        self.assertNotIn("targets", text)
-        self.assertNotIn("context_version", text)
-        self.assertIn("爱丽丝", json.dumps(window["page"]["terms"], ensure_ascii=False))
+        session.submit_resources({"cast": {"アリス": "爱丽丝"}})
+        scene = read_resource(self.project.sources, plan.resources["scene"])
+        self.assertEqual(
+            [row["source"] for row in scene.occurrences()].count(
+                "ようこそ、{player}！"
+            ),
+            2,
+        )
+        self.assertEqual(
+            sum(task.source == "ようこそ、{player}！" for task in plan.tasks), 1
+        )
+        self.assertEqual(session.current_terms["アリス"][0].translation, "爱丽丝")
 
-    def test_window_numbers_cannot_cross_snapshots_or_include_unknown_ids(self):
+    def test_resource_submissions_cannot_cross_snapshots_or_include_unknown_sources(
+        self,
+    ):
         self.plan()
         session = setup_session(self.target.work)
-        window = session.next_window()
-        with self.assertRaisesRegex(ValueError, "Unknown"):
-            session.submit_window(window["window"], {"999": "invalid"})
+        with self.assertRaisesRegex(ValueError, "not pending"):
+            session.submit_resources({"cast": {"不存在": "invalid"}})
         write_json(self.input, [MATERIALS[2]])
         sync_sources(self.project)
         self.plan()
         revised = setup_session(self.target.work)
-        with self.assertRaisesRegex(ValueError, "stale"):
-            revised.submit_window(window["window"], {"1": "invalid"})
+        with self.assertRaisesRegex(ValueError, "Invalid resource"):
+            revised.submit_resources({"cast": {"アリス": "invalid"}})
 
-    def test_long_line_is_pageable_without_losing_characters(self):
+    def test_long_line_is_available_without_framework_pagination(self):
         raw = "長い" * 20000
         write_json(
             self.input,
@@ -208,20 +209,13 @@ class ResourceWorkflowTests(unittest.TestCase):
             ],
         )
         sync_sources(self.project)
-        self.plan()
+        plan = self.plan()
+        resource = read_resource(self.project.sources, plan.resources["long"])
+        self.assertEqual([row["source"] for row in resource.occurrences()], [raw])
         session = setup_session(self.target.work)
-        window = session.next_window()
-        chunks, offset = [], 0
-        while True:
-            page = session.read_resource(
-                "long", window=window["window"], offset=offset, limit=1000
-            )
-            self.assertLessEqual(len(page["text"]), 1000)
-            chunks.append(page["text"])
-            if page["next_offset"] is None:
-                break
-            offset = page["next_offset"]
-        self.assertIn(raw, "".join(chunks))
+        self.assertNotIn(
+            raw, (session.work / "agent-prompt.md").read_text(encoding="utf-8")
+        )
 
     def test_repeated_source_in_shared_output_keeps_all_contexts(self):
         resources = [MATERIALS[1], {**MATERIALS[1], "id": "another-scene"}]
@@ -231,10 +225,9 @@ class ResourceWorkflowTests(unittest.TestCase):
             self.plan(limit=1)
         plan = self.plan(limit=2)
         self.assertEqual(len(plan.tasks), 2)
-        session = setup_session(self.target.work)
-        window = session.next_window()
-        self.assertEqual(set(window["related_resources"]), {"scene", "another-scene"})
-        self.assertEqual(len(session.search("ここは")["matches"]), 2)
+        self.assertEqual(set(plan.resources), {"scene", "another-scene"})
+        shared = next(task for task in plan.tasks if task.source == "ここはどこ？")
+        self.assertEqual(set(shared.references), set(plan.resources))
 
     def test_same_source_in_different_outputs_is_independent(self):
         write_json(
@@ -254,7 +247,7 @@ class ResourceWorkflowTests(unittest.TestCase):
         self.assertEqual(len(plan.tasks), 2)
         self.assertNotEqual(plan.tasks[0].id, plan.tasks[1].id)
 
-    def test_related_resource_reads_accepted_shared_source_as_context(self):
+    def test_related_resource_can_share_one_accepted_source(self):
         write_json(
             self.input,
             [
@@ -273,17 +266,15 @@ class ResourceWorkflowTests(unittest.TestCase):
             ],
         )
         sync_sources(self.project)
-        self.plan()
+        plan = self.plan()
         session = setup_session(self.target.work)
-        first = session.next_window()
-        session.submit_window(first["window"], {"1": "共同"})
-        second = session.next_window()
-        self.assertEqual(second["window"], first["window"])
-        self.assertEqual(second["pending"], ["2"])
-        self.assertIn("second", second["resources"])
-        self.assertIn(
-            "共同", session.read_resource("second", window=second["window"])["text"]
+        session.submit_resources({"first": {"共通": "共同"}})
+        self.assertEqual(session.status()["remaining"], 1)
+        second = read_resource(self.project.sources, plan.resources["second"])
+        self.assertEqual(
+            [row["source"] for row in second.occurrences()], ["共通", "次"]
         )
+        self.assertIn("共同", session.answers().values())
 
     def test_contradictory_shared_source_rules_are_rejected(self):
         write_json(
@@ -301,36 +292,26 @@ class ResourceWorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Incompatible"):
             self.plan()
 
-    def test_submit_checks_placeholders_and_explicit_revision(self):
+    def test_submit_checks_placeholders_and_allows_corrections(self):
         sync_sources(self.project, ["scene"])
         self.plan()
         session = setup_session(self.target.work)
-        window = session.next_window()["window"]
         with self.assertRaisesRegex(ValueError, "placeholders"):
-            session.submit_window(window, {"2": "欢迎！"})
-        session.submit_window(window, {"1": "这里是哪？"})
-        with self.assertRaisesRegex(ValueError, "Conflicting"):
-            session.submit_window(window, {"1": "这是哪里？"})
-        session.revise_window(
-            window, {"1": {"before": "这里是哪？", "translation": "这是哪里？"}}
-        )
-        with self.assertRaisesRegex(ValueError, "changed"):
-            session.revise_window(
-                window, {"1": {"before": "这里是哪？", "translation": "别的"}}
-            )
+            session.submit_resources({"scene": {"ようこそ、{player}！": "欢迎！"}})
+        session.submit_resources({"scene": {"ここはどこ？": "这里是哪？"}})
+        session.submit_resources({"scene": {"ここはどこ？": "这是哪里？"}})
+        self.assertIn("这是哪里？", session.answers().values())
 
-    def test_unfinished_window_and_whole_plan_cannot_finalize(self):
+    def test_incomplete_plan_cannot_finalize(self):
         self.plan()
         session = setup_session(self.target.work)
-        with self.assertRaisesRegex(ValueError, "unresolved"):
-            session.finish_window(session.next_window()["window"])
         with self.assertRaisesRegex(ValueError, "tasks remain"):
             session.finalize()
 
     def test_answers_resume_after_process_restart_and_checkout_move(self):
         self.plan()
         session = setup_session(self.target.work)
-        session.submit_window(session.next_window()["window"], {"1": "爱丽丝"})
+        session.submit_resources({"cast": {"アリス": "爱丽丝"}})
         self.assertEqual(Session(self.target.work).status()["completed"], 1)
         copied = self.root.parent / "copied"
         shutil.copytree(self.root, copied)
@@ -413,27 +394,19 @@ class ResourceWorkflowTests(unittest.TestCase):
         restore_artifacts(self.project, [self.target], artifacts)
         merge_results(self.project, self.target)
 
-    def test_agent_session_consumes_all_translation_windows(self):
+    def test_agent_session_consumes_resource_batches(self):
         self.plan()
         calls = []
 
         def execute(_command, prompt, _log, _timeout):
             session = Session(self.target.work)
-            window = session.next_window()
-            self.assertIn(window["window"], prompt)
-            while window.get("window"):
-                calls.append(window["resource"])
-                session.submit_window(
-                    window["window"],
-                    {
-                        str(i): VALUES[task.source]
-                        for i, task in enumerate(
-                            session.window_tasks(window["window"]), 1
-                        )
-                    },
-                )
-                session.finish_window(window["window"])
-                window = session.next_window()
+            self.assertIn("plan.json", prompt)
+            payload = {}
+            for task in session.plan.tasks:
+                resource_id = task.references[0]
+                payload.setdefault(resource_id, {})[task.source] = VALUES[task.source]
+            calls.extend(payload)
+            session.submit_resources(payload)
 
         backend = replace(self.project.backend(self.target), model="test")
         with (
@@ -463,36 +436,6 @@ class ResourceWorkflowTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(ValueError, "protected"):
                 translate_plan(self.target.work, backend)
-
-    def test_term_proposals_require_real_evidence(self):
-        self.plan()
-        session = setup_session(self.target.work)
-        window = session.next_window()["window"]
-        session.submit_window(window, {"1": "爱丽丝"})
-        with self.assertRaisesRegex(ValueError, "does not occur"):
-            session.propose_window(
-                window,
-                [
-                    {
-                        "source": "不存在",
-                        "translation": "不存在",
-                        "note": "test",
-                        "evidence": "1",
-                    }
-                ],
-            )
-
-    def test_prune_keeps_current_answers(self):
-        self.plan()
-        self.finish()
-        answer = next((self.target.work / "answers").glob("*.json"))
-        os.utime(answer, (0, 0))
-        expired = self.target.work / "answers/expired.json"
-        write_json(expired, {})
-        os.utime(expired, (0, 0))
-        prune_cache(self.target, 1)
-        self.assertTrue(answer.exists())
-        self.assertFalse(expired.exists())
 
 
 class ResourceFormatTests(unittest.TestCase):

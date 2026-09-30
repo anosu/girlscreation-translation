@@ -2,25 +2,22 @@
 
 import tomli_w
 
-from workflow.config import ROOT, Backend
+from workflow.config import Backend
 
 
 def settings(backend: Backend) -> dict:
     value = {
-        "model_instructions_file": str(ROOT / "workflow/prompts/agent-system.md"),
         "model_reasoning_summary": "none",
         "web_search": "disabled",
         "approval_policy": "never",
         "features": {
             "shell_tool": True,
-            "multi_agent": False,
+            "multi_agent": True,
             "plugins": False,
             "apps": False,
             "hooks": False,
         },
     }
-    if backend.context_window is not None:
-        value["model_context_window"] = backend.context_window
     if backend.effort:
         value["model_reasoning_effort"] = backend.effort
     return value

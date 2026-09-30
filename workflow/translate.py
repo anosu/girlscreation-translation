@@ -1,7 +1,6 @@
 """Local entry point for the same tool-using agent run by codex-action in CI."""
 
 import hashlib
-import json
 import os
 import shutil
 import signal
@@ -23,6 +22,7 @@ def protected_state(work: Path) -> dict[str, str]:
         work / "plan.json",
         work / "session.json",
         work / "runtime.json",
+        work / "agent-prompt.md",
         paths["glossary"],
         paths["project_config"],
     }
@@ -49,6 +49,7 @@ def protected_state(work: Path) -> dict[str, str]:
         ROOT / name
         for name in (
             "README.md",
+            "AGENTS.md",
             "package.json",
             "package-lock.json",
             "pyproject.toml",
@@ -66,7 +67,7 @@ def protected_state(work: Path) -> dict[str, str]:
 
 
 def codex_command(backend: Backend, work: Path) -> list[str]:
-    """Run one agent in the repository, with shell tools and durable queue access."""
+    """Run one agent in the repository with shell tools and saved answers."""
     node = shutil.which("node")
     cli = ROOT / "node_modules/@openai/codex/bin/codex.js"
     if not node or not cli.exists():
@@ -148,12 +149,7 @@ def translate_plan(
     *,
     session: Session | None = None,
 ) -> None:
-    """Run one durable agent session over the whole pending queue.
-
-    Window boundaries only limit the material returned by ``next``. They do
-    not restart the model session; accepted answers remain durable if the
-    process later times out and the command is rerun.
-    """
+    """Run one agent session for the plan; saved answers survive a rerun."""
     session = session or setup_session(work)
     if not session.status()["remaining"]:
         session.finalize()
@@ -163,13 +159,12 @@ def translate_plan(
         raise ValueError(
             f"Set {backend.api_key_env} before running the translation agent"
         )
-    window = session.next_window()
     command = codex_command(backend, work)
     prompt = (work / "agent-prompt.md").read_text(encoding="utf-8")
     prompt += (
-        f"\nInitial assigned window: {window['window']}\n"
-        "Initial material (all window resources; continue paging only when a resource is truncated):\n"
-        f"{json.dumps(window, ensure_ascii=False)}\n"
+        f"\nPlan: {work / 'plan.json'}\n"
+        f"Source paths: {work / 'runtime.json'}\n"
+        f"Pending translations: {session.status()['remaining']}\n"
     )
     log_path = work / "agent.log"
     if log_path.exists() and log_path.stat().st_size > 10 * 1024 * 1024:

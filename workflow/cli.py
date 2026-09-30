@@ -11,7 +11,7 @@ from workflow.config import DEFAULT_CONFIG, Project, Target, load_project, nonem
 from workflow.dictionaries import read_document
 from workflow.glossary import project_terms, resolve_glossary
 from workflow.merge import apply_updates, prepare_update
-from workflow.operations import prune_cache, run_summary, status
+from workflow.operations import run_summary, status
 from workflow.prepare import bind_runtime, prepare_tasks
 from workflow.session import setup_session
 from workflow.snapshot import sync_sources
@@ -70,7 +70,6 @@ def argument_parser() -> argparse.ArgumentParser:
         "update",
         "config",
         "status",
-        "cache",
         "summary",
         "evaluate",
     ):
@@ -108,9 +107,6 @@ def argument_parser() -> argparse.ArgumentParser:
                 default=10800,
                 help="Total timeout for the translation agent session",
             )
-        if command == "cache":
-            sub.add_argument("--prune", action="store_true", required=True)
-            sub.add_argument("--days", type=positive, default=30)
         if command == "summary":
             sub.add_argument("--output", type=Path)
     return parser
@@ -181,7 +177,7 @@ def main() -> None:
                 )
             print(json.dumps(records, ensure_ascii=False, indent=2))
             return
-        if args.command in {"status", "cache", "summary"}:
+        if args.command in {"status", "summary"}:
             if args.command == "summary":
                 text = run_summary(project, targets)
                 if args.output:
@@ -192,12 +188,7 @@ def main() -> None:
             else:
                 print(
                     json.dumps(
-                        [
-                            status(t)
-                            if args.command == "status"
-                            else prune_cache(t, args.days)
-                            for t in targets
-                        ],
+                        [status(t) for t in targets],
                         ensure_ascii=False,
                         indent=2,
                     )

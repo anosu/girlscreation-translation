@@ -1,6 +1,4 @@
-"""Task status and bounded cache maintenance."""
-
-import time
+"""Task status and run summaries."""
 
 from workflow.config import Project, Target
 from workflow.prepare import read_plan
@@ -55,30 +53,6 @@ def status(target: Target) -> dict:
         }
 
 
-def prune_cache(target: Target, days: int = 30) -> dict:
-    """Delete only expired inactive artifacts; never touch a current task or publication."""
-    if days <= 0:
-        raise ValueError("Cache retention must be greater than zero days")
-    plan = read_plan(target.work) if (target.work / "plan.json").exists() else None
-    active_answers = {task.id for task in plan.tasks} if plan else set()
-    cutoff = time.time() - days * 86400
-    removed = []
-    for directory in ("answers", "proposals"):
-        for path in (target.work / directory).glob("*.json"):
-            if directory == "answers" and path.stem in active_answers:
-                continue
-            if directory == "proposals" and plan and path.stem == plan.id:
-                continue
-            if path.is_symlink() or not path.resolve().is_relative_to(
-                target.work.resolve()
-            ):
-                raise ValueError(f"Cache entry escapes work directory: {path}")
-            if path.stat().st_mtime < cutoff:
-                path.unlink()
-                removed.append(path.relative_to(target.work).as_posix())
-    return {"target": target.code, "retention_days": days, "removed": removed}
-
-
 def run_summary(project: Project, targets: list[Target]) -> str:
     lines = [
         f"# Translation update: {project.name}",
@@ -103,13 +77,6 @@ def run_summary(project: Project, targets: list[Target]) -> str:
             )
         if progress.get("reason"):
             lines.extend(["", f"{target.code}: {progress['reason']}"])
-        if "windows" in report:
-            lines.extend(
-                [
-                    "",
-                    f"{target.code}: {report['windows']} reading windows for {report.get('resource_windows', 0)} resources with tasks; one resumable agent session consumes the pending windows.",
-                ]
-            )
     lines.extend(
         [
             "",

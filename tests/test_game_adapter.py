@@ -167,16 +167,13 @@ class GameAdapterTests(unittest.TestCase):
             "橋を渡って。<br>{0}へ。": "过桥。<br>前往{0}。",
             "風が吹いた。": "风吹过。",
         }
-        while session.status()["remaining"]:
-            window = session.next_window()
-            session.submit_window(
-                window["window"],
-                {
-                    str(i): translations.get(task.source, task.source)
-                    for i, task in enumerate(session.window_tasks(window["window"]), 1)
-                },
+        payload = {}
+        for task in plan.tasks:
+            resource_id = task.references[0]
+            payload.setdefault(resource_id, {})[task.source] = translations.get(
+                task.source, task.source
             )
-            session.finish_window(window["window"])
+        session.submit_resources(payload)
         session.finalize()
         merge_results(self.project, self.target)
         novel = read_json(self.target.translations / "novels/12345.json")

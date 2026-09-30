@@ -1,10 +1,9 @@
-"""Bounded reading and window-bound submissions for a translation agent."""
+"""Agent-facing batch submission and progress checks."""
 
 import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any
 
 from workflow.session import Session
 from workflow.utils import read_json, unique_object
@@ -13,33 +12,11 @@ from workflow.utils import read_json, unique_object
 def argument_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    for command in (
-        "next",
-        "read",
-        "search",
-        "submit",
-        "revise",
-        "propose",
-        "finish",
-        "status",
-        "finalize",
-    ):
+    for command in ("submit", "status"):
         sub = commands.add_parser(command)
         sub.add_argument("--work", type=Path, required=True)
-        if command in {"submit", "revise", "propose", "finish"}:
-            sub.add_argument("--window", required=True)
-        if command in {"submit", "revise", "propose"}:
-            sub.add_argument(
-                "file", type=Path, help="JSON file, or - to read standard input"
-            )
-        if command == "read":
-            sub.add_argument("resource")
-            sub.add_argument("--window")
-            sub.add_argument("--offset", type=int, default=0)
-            sub.add_argument("--limit", type=int, default=12000)
-        if command == "search":
-            sub.add_argument("query")
-            sub.add_argument("--offset", type=int, default=0)
+        if command == "submit":
+            sub.add_argument("file", type=Path, help="JSON file or - for stdin")
     return parser
 
 
@@ -48,33 +25,15 @@ def main():
     args = parser.parse_args()
     try:
         session = Session(args.work)
-        payload: Any = None
-        if args.command in {"submit", "revise", "propose"}:
+        if args.command == "submit":
             payload = (
                 json.loads(sys.stdin.read(), object_pairs_hook=unique_object)
                 if str(args.file) == "-"
                 else read_json(args.file)
             )
-        if args.command == "next":
-            result = session.next_window()
-        elif args.command == "read":
-            result = session.read_resource(
-                args.resource, window=args.window, offset=args.offset, limit=args.limit
-            )
-        elif args.command == "search":
-            result = session.search(args.query, args.offset)
-        elif args.command == "submit":
-            result = session.submit_window(args.window, payload)
-        elif args.command == "revise":
-            result = session.revise_window(args.window, payload)
-        elif args.command == "propose":
-            result = session.propose_window(args.window, payload)
-        elif args.command == "finish":
-            result = session.finish_window(args.window)
-        elif args.command == "status":
-            result = session.status()
+            result = session.submit_resources(payload)
         else:
-            result = session.finalize()
+            result = session.status()
         print(json.dumps(result, ensure_ascii=False, indent=2))
     except (ValueError, KeyError, OSError) as error:
         parser.exit(1, f"Validation failed: {error}\n")

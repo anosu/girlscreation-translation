@@ -97,33 +97,26 @@ class ConfigTests(unittest.TestCase):
             with self.subTest(codes=codes), self.assertRaises(ValueError):
                 project.select(codes)
 
-    def test_context_budget_is_optional_strict_and_used_by_cli(self):
-        def configured(value):
-            return CONFIG.replace(
+    def test_codex_settings_are_explicit_and_do_not_manage_context(self):
+        project = self.load(
+            CONFIG.replace(
                 "[backends.beta]",
-                f'[backends.alpha.codex]\neffort = "high"\ncontext_window = {value}\n[backends.beta]',
+                '[backends.alpha.codex]\neffort = "high"\n[backends.beta]',
             )
-
-        project = self.load(configured("1_000_000"))
+        )
         backend = project.backend(project.targets["zh-Hans"])
         command = codex_command(backend, self.file.parent)
         local = tomllib.loads(
             "\n".join(command[i + 1] for i, arg in enumerate(command) if arg == "-c")
         )
         for key, value in {
-            "model_context_window": 1_000_000,
             "model_reasoning_effort": "high",
             "model_reasoning_summary": "none",
         }.items():
             self.assertEqual(local[key], value)
         self.assertNotIn("model_catalog_json", local)
-        self.assertIsNone(project.backend(project.targets["es"]).context_window)
-        for value in ("0", "-1", "true", '"1000000"', "1.5"):
-            with (
-                self.subTest(value=value),
-                self.assertRaisesRegex(ValueError, "context_window"),
-            ):
-                self.load(configured(value))
+        self.assertNotIn("model_instructions_file", local)
+        self.assertTrue(local["features"]["multi_agent"])
         with self.assertRaisesRegex(ValueError, "model_catalog"):
             self.load(
                 CONFIG.replace(

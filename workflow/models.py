@@ -11,7 +11,6 @@ class Task(StrictModel):
     id: Text
     source: str
     category: Text
-    window: Text
     references: list[str]
     output: str
     path: list[str] = Field(default_factory=list)
@@ -48,7 +47,6 @@ class Plan(StrictModel):
     source_version: Text
     source_files: list[str]
     resources: dict[str, str]
-    windows: dict[str, list[str]]
     term_dictionaries: list[TermSource] = Field(default_factory=list)
     term_sources: list[TermSource] = Field(default_factory=list)
     tasks: list[Task]
@@ -68,15 +66,13 @@ class Plan(StrictModel):
         keys = [task.key for task in self.tasks]
         if len(set(ids)) != len(ids) or len(set(keys)) != len(keys):
             raise ValueError("Duplicate task or output/source key in plan")
-        if {task.window for task in self.tasks} != set(self.windows):
-            raise ValueError("Every task must belong to a planned window")
-        for members in self.windows.values():
+        for task in self.tasks:
             if (
-                not members
-                or len(set(members)) != len(members)
-                or set(members) - self.resources.keys()
+                not task.references
+                or len(set(task.references)) != len(task.references)
+                or set(task.references) - self.resources.keys()
             ):
-                raise ValueError("Invalid window resources")
+                raise ValueError("Invalid task resource references")
         validate_locations(
             [
                 *((task.output, task.path) for task in self.tasks),
@@ -93,18 +89,6 @@ class Translation(StrictModel):
 
 class Submission(StrictModel):
     translations: list[Translation]
-
-
-class Answer(Translation):
-    policy: Text
-
-
-class TermProposal(StrictModel):
-    source: Text
-    translation: Text
-    note: Text
-    evidence: Text
-    categories: list[Text] = Field(default_factory=list)
 
 
 class ResolvedTerm(StrictModel):
@@ -127,6 +111,4 @@ class Results(Submission):
     project: Text
     language: Text
     glossary_before: Text
-    glossary_after: Text
     published_terms_after: Text
-    glossary_proposals: list[TermProposal]

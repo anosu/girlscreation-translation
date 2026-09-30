@@ -11,7 +11,6 @@ from workflow.dictionaries import (
     validate_document,
 )
 from workflow.glossary import (
-    apply_proposals,
     project_terms,
     read_optional,
     resolve_glossary,
@@ -102,25 +101,14 @@ def prepare_update(project: Project, target: Target) -> Update:
             )
         dictionary[task.source] = values[task.id]
     glossary_before = read_optional(target.glossary)
-    if digest(glossary_before) not in (
-        result.glossary_before,
-        result.glossary_after,
-    ):
+    if digest(glossary_before) != result.glossary_before:
         raise ValueError("Glossary changed since agent setup")
     names = project_terms(
         target.translations,
         plan.dictionaries,
         documents=documents,
     )
-    glossary_after = apply_proposals(
-        result.glossary_proposals,
-        {t.id: t for t in plan.tasks},
-        values,
-        glossary_before,
-        names,
-        plan.rules,
-    )
-    resolved = resolve_glossary(glossary_after, names)
+    resolved = resolve_glossary(glossary_before, names)
     for task in plan.tasks:
         canonical = term_for(resolved, task.source, task.category)
         if (
@@ -141,8 +129,6 @@ def prepare_update(project: Project, target: Target) -> Update:
     originals[target.glossary] = (
         target.glossary.read_bytes() if target.glossary.exists() else None
     )
-    if glossary_after != glossary_before:
-        files[target.glossary] = encoded(glossary_after)
     content = {
         path.relative_to(target.translations).as_posix(): raw
         for path, raw in published.items()

@@ -123,8 +123,7 @@ class SimplificationTests(unittest.TestCase):
         sync_sources(project)
         plan = prepare_tasks(project, target)
         session = setup_session(target.work)
-        window = session.next_window()
-        session.submit_window(window["window"], {"1": "开始"})
+        session.submit_resources({next(iter(plan.resources)): {"はじめる": "开始"}})
         old = read_json(target.work / "plan.json")
         old["version"] = 9
         write_json(target.work / "plan.json", old)

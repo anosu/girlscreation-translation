@@ -21,7 +21,6 @@ model = "deepseek-flash"
 
 [backends.deepseek.codex]
 effort = "medium"
-context_window = 1_000_000
 
 [backends.openai]
 base_url = "https://api.openai.com/v1"

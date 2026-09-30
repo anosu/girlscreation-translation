@@ -126,12 +126,10 @@ class CodexIntegrationTests(unittest.TestCase):
             self.assertEqual(request["model"], backend.model)
             self.assertEqual(request["reasoning"]["effort"], "high")
             self.assertEqual(request["reasoning"].get("summary", "none"), "none")
-            self.assertEqual(
-                request["instructions"].strip().splitlines(),
-                (ROOT / "workflow/prompts/agent-system.md")
-                .read_text(encoding="utf-8")
-                .strip()
-                .splitlines(),
+            self.assertTrue(request["instructions"].strip())
+            self.assertIn(
+                "Girls' Creation Translation",
+                json.dumps(request["input"], ensure_ascii=False),
             )
             self.assertTrue(
                 any(
@@ -183,7 +181,7 @@ class CodexIntegrationTests(unittest.TestCase):
                         "base_url": "http://127.0.0.1",
                         "api_key_env": "MODEL_TEST_KEY",
                         "model": "test-model",
-                        "codex": {"effort": "high", "context_window": 1_000_000},
+                        "codex": {"effort": "high"},
                     }
                 },
                 "targets": {"zh-Hans": {"translations": "zh-Hans", "work": "work"}},
@@ -200,10 +198,11 @@ class CodexIntegrationTests(unittest.TestCase):
                 "import sys,json\nfrom pathlib import Path\nsys.path.insert(0,"
                 + repr(str(ROOT))
                 + ")\n"
-                "from workflow.session import Session\ns=Session(Path(sys.argv[1]))\nwindow=s.next_window()\n"
-                "context=s.read_resource(window['resource'],window=window['window'])\n(s.work/'context-used.json').write_text(json.dumps(context),encoding='utf-8')\n"
-                "print(s.submit_window(window['window'],{'1':'测试译文{0}'}))\n"
-                "print(s.finish_window(window['window']))\n",
+                "from workflow.session import Session\nfrom workflow.snapshot import read_resource\n"
+                "s=Session(Path(sys.argv[1]))\n"
+                "context=read_resource(s.cache,s.plan.resources['item-1'])\n"
+                "(s.work/'context-used.json').write_text(json.dumps({'resource':context.id}),encoding='utf-8')\n"
+                "print(s.submit_resources({'item-1':{'テスト{0}':'测试译文{0}'}}))\n",
                 encoding="utf-8",
             )
             argv = [sys.executable, str(helper), str(work)]
