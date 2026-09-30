@@ -99,6 +99,23 @@ class Session:
         }
         write_json(self.work / "session.json", config)
         (self.work / "style.md").write_text(self.plan.style, encoding="utf-8")
+        (self.work / "AGENTS.md").write_text(
+            """# Translation Agent Instructions
+
+This directory is the durable workspace for one translation plan.
+The Codex Agent owns its conversation and context; the workflow does not
+create model sessions, split sessions, or manage token budgets. Keep one
+Agent session; `next` returns a resource list and `read` retrieves material
+on demand.
+
+Read `agent-prompt.md` before translating. Use the provided workflow
+commands to read source context, submit translations, revise an accepted
+value, and finish a window. Never run sync, plan, publish, Git, or model
+management commands from this workspace. Only write durable drafts and
+reports under this directory.
+""",
+            encoding="utf-8",
+        )
         prompt = (
             f"# Translation job: {self.plan.project_name}\nSource language: {self.plan.source_language}\n"
             f"Target language: {self.plan.language} ({self.plan.language_name})\n\n{instructions}\n\n"
@@ -207,7 +224,7 @@ class Session:
                 return [task for task in self.plan.tasks if task.window == window_id]
         raise ValueError("Unknown or stale window; run next again")
 
-    def next_window(self) -> dict:
+    def next_window(self, *, include_material: bool = True) -> dict:
         pending = [task for task in self.plan.tasks if task.id not in self._answers]
         if not pending:
             return {"remaining": 0, "next": None}
@@ -219,8 +236,7 @@ class Session:
         window = digest([self.plan.id, window_id])
         tasks = self.window_tasks(window)
         resources = self.plan.windows[window_id]
-        rendered = self.read_window(window, resources)
-        return {
+        result = {
             "window": window,
             "resource": resources[0],
             "resources": resources,
@@ -231,8 +247,10 @@ class Session:
                 if task.id not in self._answers
             ],
             "remaining": len(pending),
-            "page": rendered,
         }
+        if include_material:
+            result["page"] = self.read_window(window, resources)
+        return result
 
     def read_window(self, window: str, resources: list[str] | None = None) -> dict:
         """Render every resource in a window once for the session bootstrap.
@@ -247,10 +265,10 @@ class Session:
             for window_id in self.plan.windows
             if digest([self.plan.id, window_id]) == window
         )
-        pages = [
-            self.read_resource(resource, window=window, limit=64000)
-            for resource in resources
-        ]
+        # The agent owns context management. Bootstrap material must therefore
+        # represent each selected resource completely; pagination is opt-in via
+        # the read command for a caller that explicitly wants smaller output.
+        pages = [self.read_resource(resource, window=window) for resource in resources]
         text = "\n\n".join(
             f"### Resource {page['resource']}\n{page['text']}" for page in pages
         )
@@ -262,6 +280,8 @@ class Session:
             "view": "window",
             "resources": resources,
             "text": text,
+            "complete": all(page["complete"] for page in pages),
+            "next_offset": None,
             "terms": dict(list(terms.items())[:50]),
             "more_terms": len(terms) > 50,
         }
@@ -272,12 +292,10 @@ class Session:
         *,
         window: str | None = None,
         offset: int = 0,
-        limit: int = 12000,
+        limit: int | None = None,
     ) -> dict:
-        if offset < 0 or not 1 <= limit <= 64000:
-            raise ValueError(
-                "Use offset >= 0 and a page limit between 1 and 64000 characters"
-            )
+        if offset < 0 or (limit is not None and limit <= 0):
+            raise ValueError("Use offset >= 0 and a positive page limit")
         if resource_id not in self.plan.resources:
             raise ValueError("Unknown resource in this plan")
         resource = read_resource(self.cache, self.plan.resources[resource_id])
@@ -345,12 +363,16 @@ class Session:
             if source in text
         }
         terms = list(terms_payload(relevant).items())
+        end = None if limit is None else offset + limit
+        text_page = text[offset:end]
+        next_offset = end if end is not None and end < len(text) else None
         return {
             "resource": resource.id,
             "view": "window" if resource.kind == "text" and window else "full",
             "offset": offset,
-            "text": text[offset : offset + limit],
-            "next_offset": offset + limit if offset + limit < len(text) else None,
+            "text": text_page,
+            "complete": next_offset is None,
+            "next_offset": next_offset,
             "terms": dict(terms[:50]) if offset == 0 else {},
             "more_terms": len(terms) > 50,
         }

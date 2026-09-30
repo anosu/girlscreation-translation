@@ -161,7 +161,7 @@ class WindowTests(unittest.TestCase):
         self.assertEqual(len(session.window_tasks(window["window"])), WINDOW_ITEMS)
         self.assertIn(rows[0], window["page"]["text"])
         self.assertNotIn(rows[-1], window["page"]["text"])
-        self.assertIn(rows[-1], session.read_resource("items", limit=64000)["text"])
+        self.assertIn(rows[-1], session.read_resource("items")["text"])
         self.finish(session)
         self.assertEqual(
             len(read_json(self.target.translations / "master.json")["mItems"]["name"]),

@@ -19,8 +19,6 @@ def settings(backend: Backend) -> dict:
             "hooks": False,
         },
     }
-    if backend.context_window is not None:
-        value["model_context_window"] = backend.context_window
     if backend.effort:
         value["model_reasoning_effort"] = backend.effort
     return value

@@ -183,7 +183,7 @@ class CodexIntegrationTests(unittest.TestCase):
                         "base_url": "http://127.0.0.1",
                         "api_key_env": "MODEL_TEST_KEY",
                         "model": "test-model",
-                        "codex": {"effort": "high", "context_window": 1_000_000},
+                        "codex": {"effort": "high"},
                     }
                 },
                 "targets": {"zh-Hans": {"translations": "zh-Hans", "work": "work"}},

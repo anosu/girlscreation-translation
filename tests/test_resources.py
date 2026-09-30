@@ -217,11 +217,40 @@ class ResourceWorkflowTests(unittest.TestCase):
                 "long", window=window["window"], offset=offset, limit=1000
             )
             self.assertLessEqual(len(page["text"]), 1000)
+            self.assertEqual(page["complete"], page["next_offset"] is None)
             chunks.append(page["text"])
             if page["next_offset"] is None:
                 break
             offset = page["next_offset"]
         self.assertIn(raw, "".join(chunks))
+
+    def test_window_bootstrap_does_not_clip_long_resource(self):
+        raw = "完整剧情" * 20000
+        write_json(
+            self.input,
+            [
+                {
+                    "id": "long",
+                    "output": "long.json",
+                    "kind": "dialogue",
+                    "lines": [[None, raw]],
+                }
+            ],
+        )
+        sync_sources(self.project)
+        self.plan()
+        session = setup_session(self.target.work)
+        window = session.next_window()
+        self.assertIn(raw, window["page"]["text"])
+        self.assertTrue(window["page"]["complete"])
+        self.assertIsNone(window["page"]["next_offset"])
+
+    def test_agent_queue_can_be_requested_without_preloading_material(self):
+        self.plan()
+        session = setup_session(self.target.work)
+        queue = session.next_window(include_material=False)
+        self.assertNotIn("page", queue)
+        self.assertEqual(queue["resources"], ["cast"])
 
     def test_repeated_source_in_shared_output_keeps_all_contexts(self):
         resources = [MATERIALS[1], {**MATERIALS[1], "id": "another-scene"}]

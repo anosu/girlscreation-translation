@@ -1,10 +1,10 @@
 # 完成翻译队列
 
-启动消息已包含翻译风格、首个工作窗口、资源列表和窗口内全部材料的首份视图。直接使用这些材料；完成当前窗口后执行 `uv run --no-sync python -m workflow.agent next --work WORK` 领取下一个窗口，直到 `remaining` 为 0。只处理本次计划的任务，不读取 plan.json 或其他语言缓存。
+启动消息包含翻译风格和首个工作窗口的资源清单，不预加载原文正文。对清单中的每个资源使用 `read` 获取完整材料；完成当前窗口后执行 `uv run --no-sync python -m workflow.agent next --work WORK` 领取下一个资源清单，直到 `remaining` 为 0。只处理本次计划的任务，不读取 plan.json 或其他语言缓存。
 
 ## 阅读材料
 
-一个窗口可以包含多段完整剧情及其标题，或若干短文本资源。处理资源列表中的所有资源，编号在整个窗口内唯一。相邻剧情共享一个窗口只是为了减少会话启动和工具往返；每段剧情仍按自己的完整顺序阅读，不要把不同剧情的同文强行合并。
+一个窗口可以包含多段完整剧情及其标题，或若干短文本资源。处理资源列表中的所有资源，编号在整个窗口内唯一；窗口只是待办和资源的组织，不是 Agent 会话或上下文边界。相邻剧情共享一个窗口只是为了减少规划记录；每段剧情仍按自己的完整顺序阅读，不要把不同剧情的同文强行合并。
 
 `dialogue` 展示完整有序剧情，包括已有译文和重复台词。先读完整场景，再翻译 pending 项；标题结合正文确定。原始说话人只是上下文，不自动进入译文。
 
@@ -14,7 +14,7 @@
 
 `uv run --no-sync python -m workflow.agent read RESOURCE --window WINDOW --offset OFFSET --work WORK`
 
-沿 `next_offset` 读到末页。对 text 省略 `--window` 可读取完整资源及历史译文。使用 `workflow.agent search QUERY --work WORK` 检索原文和术语。
+默认读取完整资源；只有你明确传 `--limit` 时才会分页，此时沿 `next_offset` 读到末页。对 text 省略 `--window` 可读取完整资源及历史译文。使用 `workflow.agent search QUERY --work WORK` 检索原文和术语。
 
 名称等标准译名资源必须遵守已有译法。普通台词、标题和其他文本把术语作为参考，遇到同文异义应按当前语境翻译；明确配置的 required_terms 仍是硬性约束。不补造标题、摘要、性别或背景。
 

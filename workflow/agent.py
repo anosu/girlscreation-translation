@@ -1,4 +1,4 @@
-"""Bounded reading and window-bound submissions for a translation agent."""
+"""Agent-facing source reading and validated translation submissions."""
 
 import argparse
 import json
@@ -36,7 +36,11 @@ def argument_parser():
             sub.add_argument("resource")
             sub.add_argument("--window")
             sub.add_argument("--offset", type=int, default=0)
-            sub.add_argument("--limit", type=int, default=12000)
+            sub.add_argument(
+                "--limit",
+                type=int,
+                help="Optional character page size; omitted reads the complete resource",
+            )
         if command == "search":
             sub.add_argument("query")
             sub.add_argument("--offset", type=int, default=0)
@@ -56,7 +60,7 @@ def main():
                 else read_json(args.file)
             )
         if args.command == "next":
-            result = session.next_window()
+            result = session.next_window(include_material=False)
         elif args.command == "read":
             result = session.read_resource(
                 args.resource, window=args.window, offset=args.offset, limit=args.limit

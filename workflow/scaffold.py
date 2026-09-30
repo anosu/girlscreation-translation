@@ -38,6 +38,7 @@ def create_project(
             "compatible": {
                 "base_url": "https://api.openai.com/v1",
                 "api_key_env": "MODEL_API_KEY",
+                "codex": {"effort": "medium"},
             }
         },
         "targets": {code: {"style": f"styles/{code}.md"} for code in locales},

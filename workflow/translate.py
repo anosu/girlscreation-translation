@@ -23,6 +23,9 @@ def protected_state(work: Path) -> dict[str, str]:
         work / "plan.json",
         work / "session.json",
         work / "runtime.json",
+        work / "AGENTS.md",
+        work / "agent-prompt.md",
+        work / "style.md",
         paths["glossary"],
         paths["project_config"],
     }
@@ -49,6 +52,7 @@ def protected_state(work: Path) -> dict[str, str]:
         ROOT / name
         for name in (
             "README.md",
+            "AGENTS.md",
             "package.json",
             "package-lock.json",
             "pyproject.toml",
@@ -163,12 +167,12 @@ def translate_plan(
         raise ValueError(
             f"Set {backend.api_key_env} before running the translation agent"
         )
-    window = session.next_window()
+    window = session.next_window(include_material=False)
     command = codex_command(backend, work)
     prompt = (work / "agent-prompt.md").read_text(encoding="utf-8")
     prompt += (
         f"\nInitial assigned window: {window['window']}\n"
-        "Initial material (all window resources; continue paging only when a resource is truncated):\n"
+        "Initial queue metadata (read each listed resource with workflow.agent read; the framework does not preload source text):\n"
         f"{json.dumps(window, ensure_ascii=False)}\n"
     )
     log_path = work / "agent.log"
