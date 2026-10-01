@@ -50,7 +50,7 @@ blocks 中的 texts 是待翻译字符串数组，context 可省略。原始上�
 
 两种资源都可使用资源级 context、rules 和 term。rules 支持 [Rules](../workflow/config.py) 中的占位符、标签等约束；term=true 将资源标为术语来源，相关待译项在计划中排在普通文本前。译法保存在资源指定的输出字典中，不复制到 glossary。希望以后没有重新提取该资源时仍使用全部已有译名，应配置 term_sources。没有术语资源也可以正常翻译。
 
-output 是目标语言交付目录下的相对 .json 路径，禁止绝对路径、目录逃逸、隐藏路径和 manifest.json。path 是 JSON 对象键的字符串数组，不是文件系统路径或数组下标；ml_name[] 等键按字面值使用。交付字典的最后一级始终以精确原文为键、译文为值。
+output 是目标语言交付目录下的相对 .json 路径，禁止绝对路径、目录逃逸、隐藏路径和 manifest.json。根目录的 hash.json 与 hash/ 保留给 manifest 总哈希；a.json 与 a/b.json 这类会造成 manifest 节点冲突的路径不能同时使用。path 是 JSON 对象键的字符串数组，不是文件系统路径或数组下标；ml_name[] 等键按字面值使用。交付字典的最后一级始终以精确原文为键、译文为值。
 
 同一 output/path 中相同原文只生成一条待译项，但保留全部出现位置供阅读；不同字典位置的同文互相独立，可以有不同译法。不能同时把某个位置声明为字典和其子字典，例如同一文件的 [] 与 ["table"]，或 ["table"] 与 ["table","name"]；框架会提前拒绝这种重叠。
 

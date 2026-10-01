@@ -2,6 +2,7 @@
 
 import os
 import shutil
+import subprocess
 import tempfile
 import unittest
 import zipfile
@@ -10,6 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from workflow.adapters import load_adapter
+from workflow.build import process
 from workflow.ci import restore_artifacts
 from workflow.cli import argument_parser, check_translations, main
 from workflow.config import load_project
@@ -302,6 +304,52 @@ class ResourceWorkflowTests(unittest.TestCase):
         session.submit_resources({"scene": {"ここはどこ？": "这是哪里？"}})
         self.assertIn("这是哪里？", session.answers().values())
 
+    def test_answer_correction_invalidates_completed_results(self):
+        sync_sources(self.project, ["ui"])
+        self.plan()
+        session = setup_session(self.target.work)
+        session.submit_resources({"ui": {"始める": "开始", "続ける": "继续"}})
+        session.finalize()
+        self.assertTrue((self.target.work / "results.json").exists())
+        Session(self.target.work).submit_resources({"ui": {"始める": "开始"}})
+        self.assertTrue((self.target.work / "results.json").exists())
+        Session(self.target.work).submit_resources({"ui": {"始める": "启动"}})
+        self.assertFalse((self.target.work / "results.json").exists())
+        with self.assertRaisesRegex(ValueError, "results"):
+            merge_results(self.project, self.target)
+        self.assertEqual(status(self.target)["next"], "translate")
+        Session(self.target.work).finalize()
+        merge_results(self.project, self.target)
+        self.assertEqual(
+            read_json(self.target.translations / "ui.json")["始める"], "启动"
+        )
+
+    def test_repeated_source_keeps_all_category_rules(self):
+        write_json(
+            self.input,
+            [
+                {
+                    "id": "dialogue",
+                    "output": "shared.json",
+                    "kind": "dialogue",
+                    "lines": [[None, "100 gold"]],
+                },
+                {
+                    "id": "master",
+                    "output": "shared.json",
+                    "kind": "text",
+                    "rules": {"number_kinds": ["text"]},
+                    "blocks": [{"texts": ["100 gold"]}],
+                },
+            ],
+        )
+        sync_sources(self.project)
+        plan = self.plan()
+        self.assertIn("dialogue", plan.tasks[0].rules["number_kinds"])
+        session = setup_session(self.target.work)
+        with self.assertRaisesRegex(ValueError, "master numbers"):
+            session.submit_resources({"master": {"100 gold": "200 gold"}})
+
     def test_incomplete_plan_cannot_finalize(self):
         self.plan()
         session = setup_session(self.target.work)
@@ -344,6 +392,63 @@ class ResourceWorkflowTests(unittest.TestCase):
             before,
             {p: p.read_bytes() for p in self.target.translations.rglob("*.json")},
         )
+
+    def test_check_rejects_existing_translation_with_missing_placeholder(self):
+        self.plan()
+        self.finish()
+        merge_results(self.project, self.target)
+        write_json(
+            self.target.translations / "novels/scene.json",
+            {"ここはどこ？": "这是哪里？", "ようこそ、{player}！": "欢迎！"},
+        )
+
+        process(self.target.translations)
+        with self.assertRaisesRegex(ValueError, "placeholders"):
+            check_translations(self.project, self.target)
+
+    def test_check_uses_target_rules_without_a_snapshot(self):
+        target = replace(self.target, rules={"preserve_tags": True})
+        write_json(target.translations / "ui.json", {"<b>Start</b>": "开始"})
+        process(target.translations)
+        shutil.rmtree(self.project.sources)
+        with self.assertRaisesRegex(ValueError, "tag order"):
+            check_translations(self.project, target)
+
+    def test_changed_check_rejects_new_damage_but_preserves_history(self):
+        import workflow.cli as cli
+
+        def git(*args):
+            return subprocess.run(
+                ["git", "-C", str(self.root), *args], capture_output=True, check=True
+            )
+
+        git("init", "--quiet")
+        git("config", "user.name", "Test")
+        git("config", "user.email", "test@example.com")
+        target = replace(self.target, rules={"preserve_tags": True})
+        output = target.translations / "ui.json"
+        write_json(output, {"<b>old</b>": "old", "<b>new</b>": "<b>new</b>"})
+        process(target.translations)
+        git("add", "translations")
+        git("commit", "-m", "Baseline")
+        with patch.object(cli, "ROOT", self.root):
+            check_translations(self.project, target, "HEAD")
+            write_json(output, {"<b>old</b>": "old", "<b>new</b>": "new"})
+            process(target.translations)
+            with self.assertRaisesRegex(ValueError, "tag order"):
+                check_translations(self.project, target, "HEAD")
+
+    def test_plan_rejects_manifest_conflicts_before_translation(self):
+        write_json(
+            self.input,
+            [
+                {**MATERIALS[2], "id": output, "output": output}
+                for output in ("a.json", "a/b.json")
+            ],
+        )
+        sync_sources(self.project)
+        with self.assertRaisesRegex(ValueError, "Conflicting manifest paths"):
+            self.plan()
 
     def test_partial_publication_recovers_and_second_publish_is_noop(self):
         self.plan()

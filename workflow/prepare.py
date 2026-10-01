@@ -143,6 +143,10 @@ def prepare_tasks(project: Project, target: Target, limit: int | None = None) ->
                     "before": dictionary.get(source),
                 }
             claim = claims[key]
+            category = "terms" if is_term(resource) else resource.kind
+            for kind in ("name_kinds", "number_kinds"):
+                if category in rules.get(kind, []):
+                    rules[kind] = list(dict.fromkeys([*rules[kind], claim["category"]]))
             # Contradictory exact-term policies cannot be silently overwritten.
             old = claim["rules"].get("required_terms", {})
             new = rules.get("required_terms", {})

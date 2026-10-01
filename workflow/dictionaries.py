@@ -17,6 +17,7 @@ def output_path(value: str) -> str:
         or path.as_posix() != value
         or not value.endswith(".json")
         or path.name == "manifest.json"
+        or (path.parts and path.parts[0] in {"hash", "hash.json"})
     ):
         raise ValueError(f"Invalid output dictionary path: {value}")
     return value
@@ -77,6 +78,7 @@ def validate_locations(locations: Iterable[tuple[str, list[str]]]) -> None:
     by_file: dict[str, set[tuple[str, ...]]] = {}
     for file, path in locations:
         by_file.setdefault(output_path(file), set()).add(tuple(namespace_path(path)))
+    validate_manifest_paths(by_file)
     for file, paths in by_file.items():
         ordered = sorted(paths)
         for parent, child in zip(ordered, ordered[1:]):
@@ -84,3 +86,14 @@ def validate_locations(locations: Iterable[tuple[str, list[str]]]) -> None:
                 raise ValueError(
                     f"Overlapping dictionary paths in {file}: {list(parent)} and {list(child)}"
                 )
+
+
+def validate_manifest_paths(files: Iterable[str]) -> None:
+    paths = sorted(
+        {PurePosixPath(output_path(file)).with_suffix("").parts for file in files}
+    )
+    for parent, child in zip(paths, paths[1:]):
+        if child[: len(parent)] == parent:
+            raise ValueError(
+                f"Conflicting manifest paths: {'/'.join(parent)} and {'/'.join(child)}"
+            )

@@ -36,7 +36,7 @@ update 是同步、规划、翻译、发布和检查的组合命令，会访问�
 - plan/update 的 --limit 只计算仍有缺失译文的资源，不限制同步成本。已完成资源作为上下文保留，不占上限；共享输出文件的资源仍完整纳入。上限无法容纳任何输出文件的待译资源时会报错，并提示所需的最低值。规划报告和 summary 会分别显示本次选择与因上限暂缓的待译项。
 - --backend > TRANSLATION_BACKEND > 目标 backend > 项目 backend。
 - --model > TRANSLATION_MODEL > 后端 model。
-- translate/update 的 --timeout 限制单次 Agent 进程运行时间，默认 10800 秒。
+- translate/update 的 --timeout 限制单次 Agent 进程运行时间，默认 9000 秒（150 分钟），为 CI 的 180 分钟 job 预留安装与收尾时间。
 - project.cache 统一设置缓存根目录，默认 .cache/translation，自动按项目 ID 和语言隔离。目标可指定 translations、glossary、style 和 rules；一般无需手动配置 sources 或 work。
 - 资源的 path 定位输出文件中的字典，省略时为根字典。目标的 term_sources 可指定 names.json 等标准译名字典；详见[完整示例](examples/dictionaries/README.md)。
 
@@ -53,6 +53,10 @@ init 生成空的 sources/resources.json 及配置、风格、术语和 manifest
 ## 维护与 CI
 
 status 显示下一步，summary 显示统计。移动工作目录后，重新运行 translate 会更新路径绑定；原文快照仍须保留。
+
+修改已提交的答案会使旧 results.json 失效，重新运行 translate 完成校验后才能发布。check 始终检查目标语言的通用规则；本地有原文快照时，也会检查快照所含资源的规则，不抓取历史原文。
+
+`check --changed-since COMMIT` 只对相对于指定 Git 提交新增或修改的译文检查格式规则，结构和 manifest 检查仍覆盖所有文件。CI 使用此模式，避免历史格式问题阻止无关更新；直接运行 check 则检查全部已有译文。publish 校验本次写入的译文，不改写或豁免新译文来迁就历史问题。
 
 人工改译后运行 npm run build:manifest。提交钩子默认读取暂存的 game/translation.toml；独立项目可传 --config 或调整钩子。
 

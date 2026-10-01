@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from workflow.build import make_manifest, traverse
+from workflow.build import make_manifest
 from workflow.config import Project, Target
 from workflow.dictionaries import (
     dictionary_at,
@@ -19,7 +19,7 @@ from workflow.glossary import (
 from workflow.models import Results
 from workflow.prepare import read_plan
 from workflow.utils import digest, read_json, unique_object, write_bytes, write_json
-from workflow.validate import validate_results
+from workflow.validate import changed_translations, validate_published, validate_results
 
 
 def encoded(value: dict) -> bytes:
@@ -57,7 +57,10 @@ def prepare_update(project: Project, target: Target) -> Update:
         or plan.term_sources != target.term_sources
     ):
         raise ValueError("Target translation policy changed since prepare")
-    result = Results.model_validate(read_json(target.work / "results.json"))
+    result_path = target.work / "results.json"
+    if not result_path.exists():
+        raise ValueError("Translation results are missing; rerun translate")
+    result = Results.model_validate(read_json(result_path))
     if (
         result.plan != plan.id
         or result.project != project.id
@@ -138,11 +141,8 @@ def prepare_update(project: Project, target: Target) -> Update:
     for name, raw in checked.items():
         if name == "manifest.json":
             continue
-        for key, value in traverse(json.loads(raw)):
-            if not value.strip() or any(
-                term in value for term in target.rules.get("forbidden_translations", [])
-            ):
-                raise ValueError(f"Invalid published translation: {name}: {key}")
+        before = json.loads(published.get(target.translations / name, b"{}"))
+        validate_published(changed_translations(json.loads(raw), before), target.rules)
     if documents:
         manifest = target.translations / "manifest.json"
         originals.setdefault(manifest, None)

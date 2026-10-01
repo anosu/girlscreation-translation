@@ -14,6 +14,8 @@ from workflow.config import ROOT, Backend
 from workflow.prepare import read_plan, runtime_paths
 from workflow.session import Session, setup_session
 
+DEFAULT_AGENT_TIMEOUT = 150 * 60
+
 
 def protected_state(work: Path) -> dict[str, str]:
     """Fingerprint publication inputs and code before and after the local agent runs."""
@@ -145,7 +147,7 @@ def execute_codex(command: list[str], prompt: str, log: TextIO, timeout: int) ->
 def translate_plan(
     work: Path,
     backend: Backend,
-    timeout: int = 10800,
+    timeout: int = DEFAULT_AGENT_TIMEOUT,
     *,
     session: Session | None = None,
 ) -> None:

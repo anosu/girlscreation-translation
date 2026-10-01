@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from workflow.config import DEFAULT_CONFIG, Configuration, load_project
+from workflow.dictionaries import validate_manifest_paths
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -51,6 +52,7 @@ def file_hash(path: Path) -> str:
 
 def make_manifest(files: dict[str, bytes]) -> bytes:
     """Build a manifest from paths relative to a language directory."""
+    validate_manifest_paths(name for name in files if name != "manifest.json")
     manifest = {}
     for name, content in sorted(files.items()):
         if name == "manifest.json":

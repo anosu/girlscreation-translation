@@ -205,6 +205,9 @@ class Session:
         )
         combined = {**self._answers, **validated}
         self.validate(combined)
+        if combined != self._answers:
+            for name in ("results.json", "publication.json"):
+                (self.work / name).unlink(missing_ok=True)
         write_json(
             self.work / "answers.json",
             {"policy": self.config["policy"], "translations": combined},

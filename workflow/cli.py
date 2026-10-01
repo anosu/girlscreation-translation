@@ -6,16 +6,30 @@ import os
 import subprocess
 from pathlib import Path
 
-from workflow.build import process, traverse
-from workflow.config import DEFAULT_CONFIG, Project, Target, load_project, nonempty
-from workflow.dictionaries import read_document
+from workflow.build import process
+from workflow.config import (
+    DEFAULT_CONFIG,
+    ROOT,
+    Project,
+    Target,
+    load_project,
+    nonempty,
+)
+from workflow.dictionaries import dictionary_at, read_document
 from workflow.glossary import project_terms, resolve_glossary
 from workflow.merge import apply_updates, prepare_update
 from workflow.operations import run_summary, status
 from workflow.prepare import bind_runtime, prepare_tasks
 from workflow.session import setup_session
-from workflow.snapshot import sync_sources
-from workflow.translate import translate_plan
+from workflow.snapshot import read_resource, read_snapshot, sync_sources
+from workflow.translate import DEFAULT_AGENT_TIMEOUT, translate_plan
+from workflow.utils import unique_object
+from workflow.validate import (
+    changed_translations,
+    combine_rules,
+    validate_published,
+    validate_translation,
+)
 
 
 def positive(value: str) -> int:
@@ -25,30 +39,99 @@ def positive(value: str) -> int:
     return number
 
 
-def check_translations(project: Project, target: Target) -> None:
+def check_translations(
+    project: Project, target: Target, changed_since: str | None = None
+) -> None:
     names = project_terms(target.translations, target.term_sources)
     terms = resolve_glossary(target.glossary, names)
     count = 0
+    documents = {}
+    existing_paths, modified_paths = set(), set()
+    if changed_since:
+        subprocess.run(
+            ["git", "rev-parse", "--verify", f"{changed_since}^{{commit}}"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+        )
+        for command, paths in (
+            (
+                [
+                    "ls-tree",
+                    "-r",
+                    "--name-only",
+                    "-z",
+                    changed_since,
+                    "--",
+                    str(target.translations),
+                ],
+                existing_paths,
+            ),
+            (
+                [
+                    "diff",
+                    "--name-only",
+                    "-z",
+                    changed_since,
+                    "--",
+                    str(target.translations),
+                ],
+                modified_paths,
+            ),
+        ):
+            result = subprocess.run(
+                ["git", *command], cwd=ROOT, capture_output=True, check=True
+            )
+            paths.update(result.stdout.decode("utf-8").split("\0"))
     for path in target.translations.rglob("*.json"):
         if path.name == "manifest.json":
             continue
-        for source, value in traverse(read_document(path)):
-            if (
-                not source.strip()
-                or not value.strip()
-                or any(
-                    word in value
-                    for word in target.rules.get("forbidden_translations", [])
-                )
-            ):
-                raise ValueError(f"Invalid published translation: {path}: {source}")
-            count += 1
+        document = read_document(path)
+        if changed_since:
+            relative = path.resolve().relative_to(ROOT).as_posix()
+            if relative in existing_paths and relative not in modified_paths:
+                continue
+            previous = subprocess.run(
+                ["git", "show", f"{changed_since}:{relative}"],
+                cwd=ROOT,
+                capture_output=True,
+            )
+            before = (
+                json.loads(previous.stdout, object_pairs_hook=unique_object)
+                if previous.returncode == 0
+                else {}
+            )
+            document = changed_translations(document, before)
+        documents[path.relative_to(target.translations).as_posix()] = document
+        count += validate_published(document, target.rules)
+    if (project.sources / "index.json").exists():
+        snapshot, _, _ = read_snapshot(project)
+        canonical = {
+            (source.file, tuple(source.path)) for source in target.term_sources
+        }
+        for file in snapshot.resources.values():
+            resource = read_resource(project.sources, file)
+            dictionary = dictionary_at(
+                documents.get(resource.output, {}), resource.path
+            )
+            category = (
+                "terms"
+                if resource.term or (resource.output, tuple(resource.path)) in canonical
+                else resource.kind
+            )
+            rules = combine_rules(resource.rules, target.rules)
+            for occurrence in resource.occurrences():
+                source = occurrence["source"]
+                if source in dictionary:
+                    validate_translation(
+                        source, dictionary[source], rules, category=category
+                    )
     if target.translations.exists() and not process(target.translations, check=True):
         raise ValueError(
             f'Manifest is missing or outdated: {target.translations}. Run npm run build:manifest -- --config "{project.config}"'
         )
     print(
-        f"{target.code}: {count} dictionary keys, {len(terms)} terms; remote freshness and coverage not checked"
+        f"{target.code}: {count} {'changed ' if changed_since else ''}dictionary keys, {len(terms)} terms; remote freshness and coverage not checked"
     )
 
 
@@ -81,6 +164,11 @@ def argument_parser() -> argparse.ArgumentParser:
             continue
         sub.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
         sub.add_argument("--target", action="append")
+        if command == "check":
+            sub.add_argument(
+                "--changed-since",
+                help="Check changed translations against a Git commit; structure and manifest checks still cover all files",
+            )
         if command in {"sync", "update"}:
             sub.add_argument(
                 "--source-id",
@@ -104,7 +192,7 @@ def argument_parser() -> argparse.ArgumentParser:
             sub.add_argument(
                 "--timeout",
                 type=positive,
-                default=10800,
+                default=DEFAULT_AGENT_TIMEOUT,
                 help="Total timeout for the translation agent session",
             )
         if command == "summary":
@@ -223,7 +311,9 @@ def main() -> None:
             print(f"Updated {apply_updates(updates)} publication files")
         if args.command in {"check", "update"}:
             for target in targets:
-                check_translations(project, target)
+                check_translations(
+                    project, target, getattr(args, "changed_since", None)
+                )
     except (ValueError, KeyError, OSError, subprocess.SubprocessError) as error:
         parser.exit(
             1, f"Workflow failed: {error}\nUse status; accepted drafts are retained.\n"

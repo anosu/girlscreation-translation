@@ -40,7 +40,11 @@ def combine_rules(game: dict, target: dict) -> dict:
 
 
 def validate_translation(
-    source: str, translation: Any, rules: dict | None = None
+    source: str,
+    translation: Any,
+    rules: dict | None = None,
+    *,
+    category: str | None = None,
 ) -> None:
     """Check universal controls and optional target-language terminology rules."""
     rules = rules or {}
@@ -61,6 +65,45 @@ def validate_translation(
     for original, required in rules.get("required_terms", {}).items():
         if original == source and required != translation:
             raise ValueError(f"Missing canonical translation {required}")
+    for kind, pattern in (
+        ("name_kinds", rules.get("name_identifier_pattern", NAME_SYMBOLS.pattern)),
+        ("number_kinds", NUMBERS.pattern),
+    ):
+        if category in rules.get(kind, []) and Counter(
+            m.group(0) for m in re.finditer(pattern, PROTECTED.sub("", source))
+        ) != Counter(
+            m.group(0) for m in re.finditer(pattern, PROTECTED.sub("", translation))
+        ):
+            raise ValueError(
+                f"Changed name identifiers or master numbers: {source[:80]!r}"
+            )
+
+
+def validate_published(document: dict, rules: dict) -> int:
+    count = 0
+    for source, value in document.items():
+        if isinstance(value, dict):
+            count += validate_published(value, rules)
+        else:
+            validate_translation(source, value, rules)
+            count += 1
+    return count
+
+
+def changed_translations(document: dict, before: dict) -> dict:
+    """Keep only added or changed strings, preserving their dictionary paths."""
+    changed = {}
+    for source, value in document.items():
+        previous = before.get(source)
+        if isinstance(value, dict):
+            nested = changed_translations(
+                value, previous if isinstance(previous, dict) else {}
+            )
+            if nested:
+                changed[source] = nested
+        elif value != previous:
+            changed[source] = value
+    return changed
 
 
 def validate_results(
@@ -77,22 +120,9 @@ def validate_results(
             raise ValueError(f"Unknown or duplicate result ID: {key}")
         task = expected[key]
         task_rules = combine_rules(task.rules, rules)
-        validate_translation(task.source, item.translation, task_rules)
-        pattern = (
-            re.compile(task_rules.get("name_identifier_pattern", NAME_SYMBOLS.pattern))
-            if task.category in task_rules.get("name_kinds", [])
-            else NUMBERS
-            if task.category in task_rules.get("number_kinds", [])
-            else None
+        validate_translation(
+            task.source, item.translation, task_rules, category=task.category
         )
-        if pattern and Counter(
-            m.group(0) for m in pattern.finditer(PROTECTED.sub("", task.source))
-        ) != Counter(
-            m.group(0) for m in pattern.finditer(PROTECTED.sub("", item.translation))
-        ):
-            raise ValueError(
-                f"Changed name identifiers or master numbers: {task.source[:80]!r}"
-            )
         results[key] = item.translation
     if set(results) != set(expected):
         raise ValueError(f"Missing {len(set(expected) - set(results))} translations")

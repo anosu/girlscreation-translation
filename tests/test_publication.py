@@ -6,10 +6,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from workflow.build import build_staged, obj_hash, process
+from workflow.build import build_staged, make_manifest, obj_hash, process
 from workflow.dictionaries import read_dictionary
+from workflow.resources import Resource
 from workflow.utils import read_json, write_json
-from workflow.validate import validate_translation
+from workflow.validate import changed_translations, validate_translation
 
 
 class PublicationTests(unittest.TestCase):
@@ -75,3 +76,31 @@ class PublicationTests(unittest.TestCase):
         for translation in ("{player}\n是", "<b>{wrong}</b>\n是", "<b>{player}</b>是"):
             with self.assertRaises(ValueError):
                 validate_translation("<b>{player}</b>\nはい", translation, rules)
+
+    def test_manifest_rejects_conflicting_file_paths(self):
+        with self.assertRaisesRegex(ValueError, "Conflicting manifest paths"):
+            make_manifest({"a.json": b"{}", "a/b.json": b"{}"})
+
+    def test_reserved_hash_file_is_rejected(self):
+        for output in ("hash.json", "hash/a.json"):
+            with (
+                self.subTest(output=output),
+                self.assertRaisesRegex(ValueError, "Invalid output"),
+            ):
+                Resource(id="hash", output=output, kind="text")
+
+    def test_changed_translations_preserves_paths_and_ignores_old_values(self):
+        before = {"table": {"name": {"old": "old translation", "changed": "before"}}}
+        after = {
+            "table": {
+                "name": {
+                    "old": "old translation",
+                    "changed": "after",
+                    "new": "new translation",
+                }
+            }
+        }
+        self.assertEqual(
+            changed_translations(after, before),
+            {"table": {"name": {"changed": "after", "new": "new translation"}}},
+        )

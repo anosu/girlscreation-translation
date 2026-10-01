@@ -216,6 +216,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref }}
       - uses: astral-sh/setup-uv@v10.1.0
       - run: uv sync --frozen --all-extras --python 3.14
       - uses: actions/download-artifact@v8
@@ -228,7 +230,7 @@ jobs:
           if [ -n "$TARGET_LANGUAGES" ]; then args+=(--target "$TARGET_LANGUAGES"); fi
           uv run --no-sync python -m workflow.ci restore --config "$PROJECT_CONFIG" "${args[@]}" --artifacts .cache/collected
           uv run --no-sync python -m workflow publish --config "$PROJECT_CONFIG" "${args[@]}"
-          uv run --no-sync python -m workflow check --config "$PROJECT_CONFIG" "${args[@]}"
+          uv run --no-sync python -m workflow check --config "$PROJECT_CONFIG" "${args[@]}" --changed-since HEAD
           uv run --no-sync python -m workflow.ci stage --config "$PROJECT_CONFIG" "${args[@]}"
       - name: Commit one publication
         run: |
